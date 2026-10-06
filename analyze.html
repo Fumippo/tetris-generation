@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>DeviceLab Browser Benchmark v1</title>
+<title>DeviceLab Browser Benchmark v1.1</title>
 <style>
 :root{
   --bg:#071019;--panel:#0d1723;--panel2:#111e2d;--line:#24364a;--text:#eaf2ff;--muted:#9fb0c4;
@@ -31,7 +31,7 @@ footer{color:var(--muted);font-size:11px;padding:12px 0 28px}
 </style>
 </head>
 <body>
-<header><div class="wrap"><h1>DeviceLab Browser Benchmark <small style="font-size:.38em;color:#78b7ff">v1</small></h1><p class="sub">CPU・Worker並列・メモリ・Tetris AI相当処理・持続性能・ブラウザ・ストレージ・GPUを、ブラウザだけで分解測定。</p></div></header>
+<header><div class="wrap"><h1>DeviceLab Browser Benchmark <small style="font-size:.38em;color:#78b7ff">v1.1</small></h1><p class="sub">CPU・Worker並列・メモリ・Tetris AI実負荷・持続性能・ブラウザ・ストレージ・GPUを、測定不能値を除外しながら分解測定。</p></div></header>
 <main class="wrap grid">
 <section class="card two3">
 <h2>機器情報・テスト設定</h2>
@@ -40,8 +40,9 @@ footer{color:var(--muted);font-size:11px;padding:12px 0 28px}
  <div class="field"><label>CPU / SoC（任意）</label><input id="cpuName" placeholder="例: Core i7-6700K / A16"></div>
  <div class="field"><label>GPU（任意）</label><input id="gpuName" placeholder="例: GTX 1070"></div>
  <div class="field"><label>RAM GB（任意）</label><input id="ramGB" type="number" min="1" max="2048" step="1" placeholder="例: 32"></div>
- <div class="field"><label>ストレージ種別</label><select id="storageType"><option value="unknown">不明/未入力</option><option>NVMe SSD</option><option>SATA SSD</option><option>HDD</option><option>Mobile flash</option></select></div>
- <div class="field"><label>モード</label><select id="mode"><option value="quick">Quick 約20–35秒</option><option value="standard" selected>Standard 約1–2分</option><option value="deep">Deep 約3–6分</option></select></div>
+ <div class="field"><label>ブラウザ保存先のストレージ</label><select id="storageType"><option value="unknown">不明/未入力</option><option>NVMe SSD</option><option>SATA SSD</option><option>HDD</option><option>Mobile flash</option></select></div>
+ <div class="field"><label>その他ストレージ（任意）</label><input id="secondaryStorage" placeholder="例: D: HDD 8TB"></div>
+ <div class="field"><label>モード</label><select id="mode"><option value="quick">Quick 約25–45秒</option><option value="standard" selected>Standard 約1.5–3分</option><option value="deep">Deep 約4–8分</option></select></div>
  <div class="field"><label>最大Worker（0=自動）</label><input id="maxWorkers" type="number" min="0" max="32" value="0"></div>
  <div class="field"><label>備考</label><input id="notes" placeholder="AC電源、高性能モード等"></div>
 </div>
@@ -78,7 +79,7 @@ footer{color:var(--muted);font-size:11px;padding:12px 0 28px}
  <div class="kpi"><span>Storage</span><b id="sStorage">-</b></div>
  <div class="kpi"><span>GPU browser</span><b id="sGpu">-</b></div>
 </div>
-<p class="mini">スコア1000はDeviceLab v1内部基準。実測値を主、スコアを補助として見てください。異なるブラウザ・省電力状態では値が変わります。</p>
+<p class="mini">スコア1000はDeviceLab v1.1内部基準。実測値を主、スコアは補助として見てください。測定不能カテゴリは総合点から自動除外して残りの重みを再正規化します。異なるブラウザ・省電力状態では値が変わります。</p>
 </section>
 <section class="card half"><h2>Worker Scaling</h2><canvas class="chart" id="workerChart" width="900" height="330"></canvas><div id="workerRecommendation" class="diag mini"></div></section>
 <section class="card half"><h2>Sustained Performance</h2><canvas class="chart" id="sustainChart" width="900" height="330"></canvas><div id="sustainNote" class="diag mini"></div></section>
@@ -87,7 +88,7 @@ footer{color:var(--muted);font-size:11px;padding:12px 0 28px}
 <section class="card two3"><h2>実測値</h2><div style="overflow:auto"><table class="resultTable"><thead><tr><th>Test</th><th>Result</th><th>Unit</th><th>Index</th></tr></thead><tbody id="resultsBody"></tbody></table></div></section>
 <section class="card third"><h2>比較</h2><div id="compare">結果JSONを読み込むと現在結果と比較します。</div></section>
 <section class="card"><h2>ログ</h2><div class="log" id="log"></div></section>
-<footer class="card"><b>注意:</b> ブラウザベンチはOS・ブラウザ・JIT・電源管理・バックグラウンド負荷の影響を受けます。GPU/Storage値はネイティブベンチではなく、ブラウザ経由の性能です。CPU温度そのものは取得していません。</footer>
+<footer class="card"><b>注意:</b> ブラウザベンチはOS・ブラウザ・JIT・電源管理・バックグラウンド負荷の影響を受けます。MemoryはJavaScript/TypedArray経由、StorageはIndexedDB経由、GPUはWebGL2経由の性能で、ネイティブRAM/SSD/GPUベンチではありません。CPU温度そのものは取得していません。</footer>
 </main>
 <script>
 'use strict';
@@ -96,12 +97,14 @@ const STATE={running:false,stop:false,result:null,compare:null};
 const REF={
  intMops:220,floatMops:70,arrayMops:120,multiMops:650,
  memReadGBs:5.0,memWriteGBs:4.0,memCopyGBs:6.0,randomMops:70,
- tetrisPosK:90,nnM:2.2,browserOpsK:160,storageWriteMBs:180,storageReadMBs:300,gpuMPix:850
+ tetrisPosK:90,nnM:2.2,tetrisMultiK:260,
+ browserDomK:200,browserJsonRps:500,browserCanvasK:2500,
+ storageWriteMBs:180,storageRandomOps:900,gpuMPix:850
 };
 const MODE={
- quick:{singleSec:.65,multiTarget:.65,memMB:32,tetrisSec:1.0,browserN:3000,storageMB:0,gpuFrames:35,sustainSec:0,reps:2},
- standard:{singleSec:1.25,multiTarget:1.1,memMB:64,tetrisSec:2.0,browserN:8000,storageMB:12,gpuFrames:90,sustainSec:12,reps:3},
- deep:{singleSec:2.2,multiTarget:1.7,memMB:96,tetrisSec:3.5,browserN:16000,storageMB:28,gpuFrames:180,sustainSec:60,reps:5}
+ quick:{singleSec:.65,multiTarget:.65,memMB:32,tetrisSec:1.0,tetrisWorkerSec:.70,browserN:3000,storageMB:0,gpuMinMs:280,sustainSec:0,reps:2},
+ standard:{singleSec:1.25,multiTarget:1.1,memMB:64,tetrisSec:2.0,tetrisWorkerSec:1.40,browserN:8000,storageMB:64,gpuMinMs:500,sustainSec:30,reps:3},
+ deep:{singleSec:2.2,multiTarget:1.7,memMB:128,tetrisSec:3.5,tetrisWorkerSec:2.50,browserN:16000,storageMB:192,gpuMinMs:900,sustainSec:180,reps:5}
 };
 function now(){return performance.now()}
 function log(msg,cls=''){const d=document.createElement('div');if(cls)d.className=cls;d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`;$('log').appendChild(d);$('log').scrollTop=$('log').scrollHeight}
@@ -113,13 +116,16 @@ function std(a){const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)**2)))}
 function cv(a){const m=mean(a);return m?std(a)/m:0}
 function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
 function gmean(vals){const a=vals.filter(x=>Number.isFinite(x)&&x>0);return a.length?Math.exp(a.reduce((s,x)=>s+Math.log(x),0)/a.length):0}
-function scoreHigher(v,ref){return clamp(1000*v/ref,100,5000)}
+function scoreHigher(v,ref){
+ if(!Number.isFinite(v)||!Number.isFinite(ref)||v<=0||ref<=0)return null;
+ return clamp(1000*v/ref,100,4000)
+}
 function fmt(n,d=1){return Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d}):'-'}
 function hash32(x){x|=0;x=Math.imul(x^(x>>>16),0x7feb352d);x=Math.imul(x^(x>>>15),0x846ca68b);return (x^(x>>>16))>>>0}
-function addMetric(key,label,value,unit,index){STATE.result.metrics[key]={label,value,unit,index};renderMetricTable()}
-function renderMetricTable(){const b=$('resultsBody');b.innerHTML='';if(!STATE.result)return;for(const m of Object.values(STATE.result.metrics)){const tr=document.createElement('tr');tr.innerHTML=`<td>${m.label}</td><td>${fmt(m.value,m.value>=100?0:2)}</td><td>${m.unit}</td><td>${fmt(m.index,0)}</td>`;b.appendChild(tr)}}
+function addMetric(key,label,value,unit,index,note=''){STATE.result.metrics[key]={label,value,unit,index,note};renderMetricTable()}
+function renderMetricTable(){const b=$('resultsBody');b.innerHTML='';if(!STATE.result)return;for(const m of Object.values(STATE.result.metrics)){const tr=document.createElement('tr');const label=m.note?`${escapeHTML(m.label)}<div class="mini">${escapeHTML(m.note)}</div>`:escapeHTML(m.label);tr.innerHTML=`<td>${label}</td><td>${fmt(m.value,Number.isFinite(m.value)&&m.value>=100?0:2)}</td><td>${escapeHTML(m.unit||'')}</td><td>${fmt(m.index,0)}</td>`;b.appendChild(tr)}}
 function scoreClass(el,v){el.className='score '+(v>=1100?'good':v>=750?'warn':'bad')}
-function setScore(id,v){const e=$(id);e.textContent=v?fmt(v,0):'-';if(v)scoreClass(e,v)}
+function setScore(id,v){const e=$(id);if(!Number.isFinite(v)||v<=0){e.textContent='N/A';e.className='';return}e.textContent=fmt(v,0);scoreClass(e,v)}
 
 function getWebGLInfo(){
  let canvas=document.createElement('canvas'),gl=canvas.getContext('webgl2',{antialias:false,preserveDrawingBuffer:false});
@@ -146,10 +152,35 @@ async function benchSingle(cfg){stage('CPU SINGLE',12);log('CPU Single: integer 
 
 const WORKER_SRC=`self.onmessage=e=>{const n=e.data.n|0,seed=e.data.seed|0;let x=seed,s=0;const t=performance.now();for(let i=0;i<n;i++){x^=x<<13;x^=x>>>17;x^=x<<5;x=Math.imul(x,0x45d9f3b);s=(s+x)|0}postMessage({ms:performance.now()-t,s})}`;
 function runWorkers(count,totalIter){return new Promise((resolve,reject)=>{const blob=new Blob([WORKER_SRC],{type:'text/javascript'}),url=URL.createObjectURL(blob);let left=count,maxMs=0,sumWorker=0,dead=false;const ws=[];const t0=now();const base=Math.floor(totalIter/count),rem=totalIter%count;for(let i=0;i<count;i++){const w=new Worker(url);ws.push(w);w.onmessage=e=>{maxMs=Math.max(maxMs,e.data.ms);sumWorker+=e.data.ms;if(--left===0&&!dead){dead=true;ws.forEach(x=>x.terminate());URL.revokeObjectURL(url);resolve({wallMs:now()-t0,maxMs,sumWorker})}};w.onerror=err=>{if(!dead){dead=true;ws.forEach(x=>x.terminate());URL.revokeObjectURL(url);reject(err)}};w.postMessage({n:base+(i<rem?1:0),seed:0x1234+i*7919})}})}
-async function benchMulti(cfg){stage('CPU MULTI',24);if(!window.Worker){log('Worker unsupported: Multi skipped','w');return}const hc=navigator.hardwareConcurrency||4,maxUser=+$('maxWorkers').value||0,maxW=Math.max(1,Math.min(12,maxUser||hc||4));let candidates=[1,2,3,4,5,6,8,10,12,maxW].filter(x=>x<=maxW);candidates=[...new Set(candidates)].sort((a,b)=>a-b);if(!candidates.includes(maxW))candidates.push(maxW);const cal=calibrate(kernelInt,180),targetIter=Math.max(cal.it,Math.floor(cal.it*(cfg.multiTarget*1000)/Math.max(1,cal.t)));const rows=[];log(`Worker scaling: fixed total work ${targetIter.toLocaleString()} iterations; ${candidates.join('/')} workers`);for(const w of candidates){checkStop();await sleep(30);const r=await runWorkers(w,targetIter),mops=targetIter/(r.wallMs/1000)/1e6;rows.push({workers:w,mops,wallMs:r.wallMs});log(`${w} worker: ${fmt(mops)} M/s (${fmt(r.wallMs,0)} ms)`)}const one=rows[0]?.mops||1;for(const r of rows){r.speedup=r.mops/one;r.eff=r.speedup/r.workers}const max=Math.max(...rows.map(r=>r.mops)),chosen=rows.filter(r=>r.mops>=max*.95).sort((a,b)=>a.workers-b.workers)[0]||rows[rows.length-1];STATE.result.workerScaling=rows;STATE.result.recommendedWorkers=chosen.workers;STATE.result.scores.multi=scoreHigher(max,REF.multiMops);addMetric('cpuMulti','CPU multi-worker peak',max,'M iter/s',STATE.result.scores.multi);drawWorkerChart();$('workerRecommendation').textContent=`推奨 AutoTrainer workers: ${chosen.workers}（最大性能の95%以上に最少Workerで到達）\nPeak speedup ${fmt(max/one,2)}x / logical CPUs ${hc||'?'}`;log(`Recommended workers=${chosen.workers}, peak ${fmt(max)} M/s`,'g')}
+async function benchMulti(cfg){stage('CPU MULTI',24);if(!window.Worker){log('Worker unsupported: Multi skipped','w');return}const hc=navigator.hardwareConcurrency||4,maxUser=+$('maxWorkers').value||0,maxW=Math.max(1,Math.min(12,maxUser||hc||4));let candidates=[1,2,3,4,5,6,8,10,12,maxW].filter(x=>x<=maxW);candidates=[...new Set(candidates)].sort((a,b)=>a-b);if(!candidates.includes(maxW))candidates.push(maxW);const cal=calibrate(kernelInt,180),targetIter=Math.max(cal.it,Math.floor(cal.it*(cfg.multiTarget*1000)/Math.max(1,cal.t)));const rows=[];log(`Worker scaling: fixed total work ${targetIter.toLocaleString()} iterations; ${candidates.join('/')} workers`);for(const w of candidates){checkStop();await sleep(30);const r=await runWorkers(w,targetIter),mops=targetIter/(r.wallMs/1000)/1e6;rows.push({workers:w,mops,wallMs:r.wallMs});log(`${w} worker: ${fmt(mops)} M/s (${fmt(r.wallMs,0)} ms)`)}const one=rows[0]?.mops||1;for(const r of rows){r.speedup=r.mops/one;r.eff=r.speedup/r.workers}const max=Math.max(...rows.map(r=>r.mops)),chosen=rows.filter(r=>r.mops>=max*.95).sort((a,b)=>a.workers-b.workers)[0]||rows[rows.length-1];STATE.result.workerScaling=rows;STATE.result.recommendedWorkersGeneral=chosen.workers;STATE.result.scores.multi=scoreHigher(max,REF.multiMops);addMetric('cpuMulti','CPU multi-worker peak',max,'M iter/s',STATE.result.scores.multi);drawWorkerChart();$('workerRecommendation').textContent=`整数ループ推奨: ${chosen.workers} Workers（最大性能の95%以上に最少Workerで到達）\nPeak speedup ${fmt(max/one,2)}x / logical CPUs ${hc||'?'}`;log(`Integer-loop recommended workers=${chosen.workers}, peak ${fmt(max)} M/s`,'g')}
 
 function chooseMemMB(cfg){const user=+$('ramGB').value||0,dm=navigator.deviceMemory||0,gb=user||dm||8;let m=cfg.memMB;if(gb<=4)m=Math.min(m,24);else if(gb<=8)m=Math.min(m,48);return m}
-async function benchMemory(cfg){stage('MEMORY',36);const mb=chooseMemMB(cfg),n=Math.floor(mb*1024*1024/8);log(`Memory: Float64Array ${mb} MB × 2`);let a,b;try{a=new Float64Array(n);b=new Float64Array(n)}catch(e){log('Memory allocation failed: '+e.message,'b');return}let t=now();for(let i=0;i<n;i++)a[i]=(i&1023)*.001;let write=(mb/1024)/((now()-t)/1000);let s=0;t=now();for(let i=0;i<n;i+=4)s+=a[i];let readGB=((mb/4)/1024)/((now()-t)/1000);t=now();b.set(a);let copyGB=(mb/1024)/((now()-t)/1000);const idxN=Math.min(2_000_000,Math.max(200_000,n>>2));let x=123456789;t=now();for(let i=0;i<idxN;i++){x=(Math.imul(x,1664525)+1013904223)>>>0;s+=a[x%n]}let randomM=idxN/((now()-t)/1000)/1e6;addMetric('memWrite','Memory sequential write',write,'GB/s',scoreHigher(write,REF.memWriteGBs));addMetric('memRead','Memory sampled read',readGB,'GB/s',scoreHigher(readGB,REF.memReadGBs));addMetric('memCopy','Memory copy',copyGB,'GB/s',scoreHigher(copyGB,REF.memCopyGBs));addMetric('memRandom','Memory random access',randomM,'M access/s',scoreHigher(randomM,REF.randomMops));STATE.result.scores.memory=gmean([scoreHigher(write,REF.memWriteGBs),scoreHigher(readGB,REF.memReadGBs),scoreHigher(copyGB,REF.memCopyGBs),scoreHigher(randomM,REF.randomMops)]);log(`Memory: write ${fmt(write,2)}, read ${fmt(readGB,2)}, copy ${fmt(copyGB,2)} GB/s, random ${fmt(randomM)} M/s`,'g');a=b=null;await sleep(30)}
+async function benchMemory(cfg){
+ stage('MEMORY',34);
+ const mb=chooseMemMB(cfg),n=Math.floor(mb*1024*1024/8);
+ log(`Memory/JS access: Float64Array ${mb} MB × 2`);
+ let a,b;
+ try{a=new Float64Array(n);b=new Float64Array(n)}catch(e){log('Memory allocation failed: '+e.message,'b');return}
+ let t=now();
+ for(let i=0;i<n;i++)a[i]=(i&1023)*.001;
+ const write=(mb/1024)/((now()-t)/1000);
+ let sink=0;t=now();
+ for(let i=0;i<n;i+=4)sink+=a[i];
+ const readGB=((mb/4)/1024)/((now()-t)/1000);
+ t=now();b.set(a);
+ const copyGB=(mb/1024)/((now()-t)/1000);
+ const idxN=Math.min(3_000_000,Math.max(300_000,n>>2));let x=123456789;t=now();
+ for(let i=0;i<idxN;i++){x=(Math.imul(x,1664525)+1013904223)>>>0;sink+=a[x%n]}
+ const randomM=idxN/((now()-t)/1000)/1e6;STATE.blackhole=sink;
+ const sw=scoreHigher(write,REF.memWriteGBs),sr=scoreHigher(readGB,REF.memReadGBs),sc=scoreHigher(copyGB,REF.memCopyGBs),sx=scoreHigher(randomM,REF.randomMops);
+ addMetric('memWrite','JS TypedArray sequential write',write,'GB/s',sw,'JavaScriptループ込み。純粋なDRAM帯域ではありません');
+ addMetric('memRead','JS TypedArray sampled read',readGB,'GB/s',sr,'4要素ごとに読取。JavaScript加算・ループ性能を含みます');
+ addMetric('memCopy','TypedArray native copy',copyGB,'GB/s',sc,'b.set(a)によるブラウザ内部コピー。4項目中ではRAM転送に最も近い指標');
+ addMetric('memRandom','JS pseudo-random access',randomM,'M access/s',sx,'乱数生成・剰余・JavaScript配列アクセスを含みます');
+ STATE.result.scores.memory=weightedGMean([[sw,.25],[sr,.15],[sc,.40],[sx,.20]]);
+ log(`Memory/JS: write ${fmt(write,2)}, sampled-read ${fmt(readGB,2)}, copy ${fmt(copyGB,2)} GB/s, random ${fmt(randomM)} M/s`,'g');
+ a=b=null;await sleep(60)
+}
 
 function makeBoard(seed){let x=seed>>>0,rows=new Uint16Array(20),heights=new Uint8Array(10);for(let c=0;c<10;c++){x=hash32(x+c*997);heights[c]=2+(x%16)}for(let y=0;y<20;y++){let mask=0;for(let c=0;c<10;c++){if(20-y<=heights[c]){x=hash32(x+y*31+c);if((x&255)>22)mask|=1<<c}}rows[y]=mask}return rows}
 function analyzeBoard(rows){const h=new Uint8Array(10),holes=new Uint8Array(10);let totalH=0,totalHo=0,holeDepth=0,bump=0,wells=0,rowT=0,colT=0;for(let c=0;c<10;c++){let seen=false,top=20;for(let y=0;y<20;y++){const filled=(rows[y]>>c)&1;if(filled&&!seen){seen=true;top=y;h[c]=20-y}else if(!filled&&seen){holes[c]++;holeDepth+=20-y}}totalH+=h[c];totalHo+=holes[c]}for(let c=0;c<9;c++)bump+=Math.abs(h[c]-h[c+1]);for(let c=0;c<10;c++){const l=c? h[c-1]:20,r=c<9?h[c+1]:20;wells+=Math.max(0,Math.min(l,r)-h[c])}for(let y=0;y<20;y++){let prev=1;for(let c=0;c<10;c++){const v=(rows[y]>>c)&1;if(v!==prev)rowT++;prev=v}if(prev!==1)rowT++}for(let c=0;c<10;c++){let prev=1;for(let y=0;y<20;y++){const v=(rows[y]>>c)&1;if(v!==prev)colT++;prev=v}if(prev!==1)colT++}return {h,holes,totalH,totalHo,holeDepth,bump,wells,rowT,colT,maxH:Math.max(...h)}}
@@ -158,30 +189,224 @@ const NN_W1=new Float64Array(44*64),NN_W2=new Float64Array(64);for(let i=0;i<NN_
 function nnForward(f){let out=0;for(let j=0;j<64;j++){let z=0,o=j*44;for(let i=0;i<44;i++)z+=NN_W1[o+i]*f[i];out+=Math.tanh(z)*NN_W2[j]}return Math.tanh(out)}
 async function benchTetris(cfg){stage('TETRIS AI',50);log('Tetris AI workload: board analysis + 44→64→1 tiny NN');const boards=Array.from({length:512},(_,i)=>makeBoard(0xabc000+i));let idx=0,count=0,s=0,t0=now();while((now()-t0)<cfg.tetrisSec*1000){for(let k=0;k<256;k++){const b=boards[idx++&511],a=analyzeBoard(b),f=makeFeatures44(a,idx);s+=nnForward(f);count++}checkStop();await sleep(0)}const sec=(now()-t0)/1000,posK=count/sec/1000;const feats=Array.from({length:512},(_,i)=>makeFeatures44(analyzeBoard(boards[i]),i));let ncount=0;t0=now();while((now()-t0)<cfg.tetrisSec*650){for(let k=0;k<1024;k++){s+=nnForward(feats[ncount++&511])}checkStop()}const nsec=(now()-t0)/1000,nnM=ncount/nsec/1e6;addMetric('tetrisPos','Tetris board+NN evaluation',posK,'k positions/s',scoreHigher(posK,REF.tetrisPosK));addMetric('nnEval','Tiny NN 44→64→1',nnM,'M eval/s',scoreHigher(nnM,REF.nnM));STATE.result.scores.tetris=gmean([scoreHigher(posK,REF.tetrisPosK),scoreHigher(nnM,REF.nnM)]);log(`Tetris: ${fmt(posK)}k positions/s; NN ${fmt(nnM,2)}M eval/s`,'g')}
 
-async function benchBrowser(cfg){stage('BROWSER/UI',60);log('Browser/UI: DOM + JSON + Canvas2D');const host=document.createElement('div');host.style.cssText='position:fixed;left:-99999px;top:-99999px';document.body.appendChild(host);let t=now();for(let i=0;i<cfg.browserN;i++){const e=document.createElement('span');e.textContent='x'+i;e.className='x';host.appendChild(e)}void host.offsetHeight;const domOps=cfg.browserN/((now()-t)/1000)/1000;host.remove();const obj=Array.from({length:Math.max(1000,cfg.browserN>>1)},(_,i)=>({i,x:i*.1,s:'bench'+(i&31),a:[i,i+1,i+2]}));t=now();let reps=0;while(now()-t<450){const s=JSON.stringify(obj);JSON.parse(s);reps++}const jsonOps=reps/((now()-t)/1000);const can=document.createElement('canvas');can.width=800;can.height=450;const cx=can.getContext('2d');t=now();let draws=0;while(now()-t<450){cx.clearRect(0,0,800,450);for(let i=0;i<300;i++){cx.fillRect((i*17)%800,(i*29)%450,3+(i%11),3+(i%7))}draws+=300}const drawK=draws/((now()-t)/1000)/1000;const idx=scoreHigher(gmean([domOps*1000,jsonOps*500,drawK*100]),REF.browserOpsK);STATE.result.scores.browser=idx;addMetric('domOps','DOM creation/layout',domOps,'k nodes/s',scoreHigher(domOps*1000,REF.browserOpsK));addMetric('jsonOps','JSON stringify+parse',jsonOps,'rounds/s',scoreHigher(jsonOps*500,REF.browserOpsK));addMetric('canvas2d','Canvas2D tiny rects',drawK,'k draws/s',scoreHigher(drawK*100,REF.browserOpsK));log(`Browser: DOM ${fmt(domOps)}k/s, JSON ${fmt(jsonOps)} rounds/s, Canvas ${fmt(drawK)}k draws/s`,'g')}
 
-function openDB(){return new Promise((res,rej)=>{const q=indexedDB.open('DeviceLabBench',1);q.onupgradeneeded=()=>q.result.createObjectStore('bench');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
-async function benchStorage(cfg){stage('STORAGE',68);if(!cfg.storageMB||!window.indexedDB){log('Storage skipped','w');return}log(`Browser storage IndexedDB ${cfg.storageMB} MB`);try{const db=await openDB(),bytes=cfg.storageMB*1024*1024,chunk=1024*1024,data=new Uint8Array(chunk);for(let i=0;i<chunk;i+=4096)data[i]=i&255;let t=now();await new Promise((res,rej)=>{const tx=db.transaction('bench','readwrite'),st=tx.objectStore('bench');for(let o=0,i=0;o<bytes;o+=chunk,i++)st.put(data,'k'+i);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});const write=cfg.storageMB/((now()-t)/1000);t=now();await new Promise((res,rej)=>{const tx=db.transaction('bench','readonly'),st=tx.objectStore('bench'),count=Math.ceil(bytes/chunk);for(let i=0;i<count;i++)st.get('k'+i);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});const read=cfg.storageMB/((now()-t)/1000);await new Promise(res=>{const tx=db.transaction('bench','readwrite');tx.objectStore('bench').clear();tx.oncomplete=res});db.close();addMetric('storageWrite','IndexedDB sequential write',write,'MB/s',scoreHigher(write,REF.storageWriteMBs));addMetric('storageRead','IndexedDB sequential read',read,'MB/s',scoreHigher(read,REF.storageReadMBs));STATE.result.scores.storage=gmean([scoreHigher(write,REF.storageWriteMBs),scoreHigher(read,REF.storageReadMBs)]);log(`Storage: write ${fmt(write)} MB/s, read ${fmt(read)} MB/s`,'g')}catch(e){log('Storage skipped/error: '+e.message,'w')}}
+function tetrisWorkerSource(){
+ return [
+  hash32.toString(),makeBoard.toString(),analyzeBoard.toString(),makeFeatures44.toString(),
+  `const NN_W1=new Float64Array(44*64),NN_W2=new Float64Array(64);
+   for(let i=0;i<NN_W1.length;i++)NN_W1[i]=(((hash32(i+7)&65535)/65535)-.5)*.12;
+   for(let i=0;i<64;i++)NN_W2[i]=(((hash32(i+999)&65535)/65535)-.5)*.2;`,
+  nnForward.toString(),
+  `self.onmessage=e=>{
+    const n=e.data.n|0,seed=e.data.seed|0,boards=Array.from({length:256},(_,i)=>makeBoard((seed+i*977)>>>0));
+    let sink=0,idx=0;const t=performance.now();
+    for(let k=0;k<n;k++){const b=boards[idx++&255],a=analyzeBoard(b),f=makeFeatures44(a,idx+seed);sink+=nnForward(f)}
+    postMessage({ms:performance.now()-t,sink});
+  };`
+ ].join('\n')
+}
+function runTetrisWorkers(count,totalPos){
+ return new Promise((resolve,reject)=>{
+  const blob=new Blob([tetrisWorkerSource()],{type:'text/javascript'}),url=URL.createObjectURL(blob);
+  let left=count,dead=false;const ws=[],t0=now(),base=Math.floor(totalPos/count),rem=totalPos%count;
+  const finish=(ok,val)=>{if(dead)return;dead=true;ws.forEach(x=>x.terminate());URL.revokeObjectURL(url);ok?resolve(val):reject(val)};
+  for(let i=0;i<count;i++){const w=new Worker(url);ws.push(w);
+   w.onmessage=()=>{if(--left===0)finish(true,{wallMs:now()-t0})};
+   w.onerror=e=>finish(false,e);
+   w.postMessage({n:base+(i<rem?1:0),seed:(0xabc000+i*7919)>>>0});
+  }
+ })
+}
+async function benchTetrisWorkers(cfg){
+ stage('TETRIS WORKERS',58);
+ if(!window.Worker||!STATE.result.metrics.tetrisPos){log('Tetris Worker scaling skipped','w');return}
+ const hc=navigator.hardwareConcurrency||4,maxUser=+$('maxWorkers').value||0,maxW=Math.max(1,Math.min(12,maxUser||hc||4));
+ let candidates=[1,2,3,4,5,6,8,10,12,maxW].filter(x=>x<=maxW);
+ candidates=[...new Set(candidates)].sort((a,b)=>a-b);
+ const baseRate=Math.max(5000,STATE.result.metrics.tetrisPos.value*1000);
+ const totalPos=Math.max(8000,Math.floor(baseRate*cfg.tetrisWorkerSec));
+ const rows=[];
+ log(`Tetris Worker scaling: fixed ${totalPos.toLocaleString()} board+NN evaluations; ${candidates.join('/')} workers`);
+ for(const w of candidates){checkStop();await sleep(40);const r=await runTetrisWorkers(w,totalPos);const kps=totalPos/(r.wallMs/1000)/1000;rows.push({workers:w,kps,wallMs:r.wallMs});log(`${w} Tetris worker: ${fmt(kps)}k pos/s (${fmt(r.wallMs,0)} ms)`)}
+ const one=rows[0]?.kps||1;for(const r of rows){r.speedup=r.kps/one;r.eff=r.speedup/r.workers}
+ const peak=Math.max(...rows.map(x=>x.kps));
+ const chosen=rows.filter(r=>r.kps>=peak*.95).sort((a,b)=>a.workers-b.workers)[0]||rows[rows.length-1];
+ STATE.result.tetrisWorkerScaling=rows;
+ STATE.result.recommendedWorkers=chosen.workers;
+ STATE.result.scores.tetrisMulti=scoreHigher(peak,REF.tetrisMultiK);
+ addMetric('tetrisMulti','Tetris multi-worker peak',peak,'k positions/s',STATE.result.scores.tetrisMulti,'AutoTrainer推奨Workerはこの実負荷スケーリングを優先');
+ drawWorkerChart();
+ $('workerRecommendation').textContent=`AutoTrainer推奨: ${chosen.workers} Workers（Tetris実負荷ピークの95%以上を最少Workerで取得）\nTetris peak speedup ${fmt(peak/one,2)}x / integer-loop推奨 ${STATE.result.recommendedWorkersGeneral||'?'} Workers / logical CPUs ${hc||'?'}`;
+ log(`AutoTrainer recommended workers=${chosen.workers}, Tetris peak ${fmt(peak)}k pos/s`,'g')
+}
 
-async function benchGPU(cfg){stage('GPU',76);const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const gl=canvas.getContext('webgl2',{antialias:false,depth:false,stencil:false,preserveDrawingBuffer:false});if(!gl){log('WebGL2 unavailable: GPU skipped','w');return}const vs=`#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;const fs=`#version 300 es\nprecision highp float;out vec4 o;uniform float t;void main(){vec2 p=gl_FragCoord.xy/512.;float x=p.x+t;float y=p.y-t;for(int i=0;i<32;i++){x=sin(x*1.71+y*.37)+cos(y*1.33-x*.21);y=sin(y*1.57+x*.41)+cos(x*1.19);}o=vec4(fract(x),fract(y),fract(x*y),1.);}`;function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s}try{const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);gl.useProgram(p);const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);const loc=gl.getAttribLocation(p,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);const ut=gl.getUniformLocation(p,'t');for(let i=0;i<5;i++){gl.uniform1f(ut,i);gl.drawArrays(gl.TRIANGLES,0,3)}gl.finish();let t=now();for(let i=0;i<cfg.gpuFrames;i++){gl.uniform1f(ut,i*.001);gl.drawArrays(gl.TRIANGLES,0,3)}gl.finish();const sec=(now()-t)/1000,mpix=cfg.gpuFrames*512*512/sec/1e6;STATE.result.scores.gpu=scoreHigher(mpix,REF.gpuMPix);addMetric('gpuShader','WebGL2 shader throughput',mpix,'MPix/s',STATE.result.scores.gpu);log(`GPU/WebGL2: ${fmt(mpix)} MPix/s`,'g')}catch(e){log('GPU test error: '+e.message,'w')}}
+async function benchBrowser(cfg){
+ stage('BROWSER/UI',64);log('Browser/UI: DOM + JSON + Canvas2D');
+ const host=document.createElement('div');host.style.cssText='position:fixed;left:-99999px;top:-99999px';document.body.appendChild(host);
+ let t=now();for(let i=0;i<cfg.browserN;i++){const e=document.createElement('span');e.textContent='x'+i;e.className='x';host.appendChild(e)}
+ void host.offsetHeight;const domOps=cfg.browserN/((now()-t)/1000)/1000;host.remove();
+ const obj=Array.from({length:Math.max(1000,cfg.browserN>>1)},(_,i)=>({i,x:i*.1,s:'bench'+(i&31),a:[i,i+1,i+2]}));
+ t=now();let reps=0;while(now()-t<600){const js=JSON.stringify(obj);JSON.parse(js);reps++}const jsonOps=reps/((now()-t)/1000);
+ const can=document.createElement('canvas');can.width=800;can.height=450;const cx=can.getContext('2d');t=now();let draws=0;
+ while(now()-t<600){cx.clearRect(0,0,800,450);for(let i=0;i<300;i++)cx.fillRect((i*17)%800,(i*29)%450,3+(i%11),3+(i%7));draws+=300}
+ const drawK=draws/((now()-t)/1000)/1000;
+ const sd=scoreHigher(domOps,REF.browserDomK),sj=scoreHigher(jsonOps,REF.browserJsonRps),sc=scoreHigher(drawK,REF.browserCanvasK);
+ STATE.result.scores.browser=gmean([sd,sj,sc]);
+ addMetric('domOps','DOM creation/layout',domOps,'k nodes/s',sd);
+ addMetric('jsonOps','JSON stringify+parse',jsonOps,'rounds/s',sj);
+ addMetric('canvas2d','Canvas2D tiny rects',drawK,'k draws/s',sc);
+ log(`Browser: DOM ${fmt(domOps)}k/s, JSON ${fmt(jsonOps)} rounds/s, Canvas ${fmt(drawK)}k draws/s; index ${fmt(STATE.result.scores.browser,0)}`,'g')
+}
 
-async function benchSustained(cfg){stage('SUSTAINED',86);if(!cfg.sustainSec){log('Sustained skipped in Quick mode','w');return}log(`Sustained CPU ${cfg.sustainSec}s: throughputを1秒ごとに追跡`);const c=calibrate(kernelInt,140),it=c.it,samples=[],end=now()+cfg.sustainSec*1000;while(now()<end){checkStop();let ops=0,t0=now();while(now()-t0<900){kernelInt(it);ops+=it}const sec=(now()-t0)/1000;samples.push(ops/sec/1e6);stage('SUSTAINED',86+8*Math.min(1,samples.length/Math.max(1,cfg.sustainSec)));await sleep(80)}const first=mean(samples.slice(0,Math.min(3,samples.length))),last=mean(samples.slice(-Math.min(3,samples.length))),ratio=first?last/first:1;STATE.result.sustained={samples,first,last,ratio};STATE.result.scores.sustained=clamp(1000*ratio,300,1200);addMetric('sustainedRatio','Sustained / initial',ratio*100,'%',STATE.result.scores.sustained);drawSustainChart();$('sustainNote').textContent=`初期 ${fmt(first)} M/s → 終盤 ${fmt(last)} M/s / 維持率 ${fmt(ratio*100)}%`;log(`Sustained: ${fmt(ratio*100)}% (${fmt(first)} → ${fmt(last)} M/s)`,ratio<.85?'w':'g')}
+function openDB(){return new Promise((res,rej)=>{const q=indexedDB.open('DeviceLabBenchV11',1);q.onupgradeneeded=()=>q.result.createObjectStore('bench');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
+async function benchStorage(cfg){
+ stage('STORAGE',72);
+ if(!cfg.storageMB||!window.indexedDB){log('Storage skipped','w');return}
+ const chunk=512*1024,count=Math.ceil(cfg.storageMB*1024*1024/chunk),actualMB=count*chunk/1024/1024;
+ log(`Browser storage IndexedDB ${fmt(actualMB,0)} MB / ${count} chunks (cache-sensitive)`);
+ try{
+  let db=await openDB(),data=new Uint8Array(chunk);
+  let t=now();
+  await new Promise((res,rej)=>{
+   const tx=db.transaction('bench','readwrite'),st=tx.objectStore('bench');
+   for(let i=0;i<count;i++){data[0]=i&255;data[1]=(i>>>8)&255;data[chunk-1]=(i*31)&255;st.put(data.slice(),'k'+i)}
+   tx.oncomplete=res;tx.onerror=()=>rej(tx.error)
+  });
+  const write=actualMB/((now()-t)/1000);
+  db.close();await sleep(250);db=await openDB();
+  let checksum=0;t=now();
+  await new Promise((res,rej)=>{
+   const tx=db.transaction('bench','readonly'),st=tx.objectStore('bench');
+   for(let i=0;i<count;i++){const q=st.get('k'+i);q.onsuccess=()=>{const v=q.result;if(v)checksum+=v[0]+v[v.length-1]}}
+   tx.oncomplete=res;tx.onerror=()=>rej(tx.error)
+  });
+  const seqRead=actualMB/((now()-t)/1000);
+  const probes=Math.min(192,Math.max(48,count)),order=[];let x=0x12345678;
+  for(let i=0;i<probes;i++){x=hash32(x+i);order.push(x%count)}
+  t=now();
+  await new Promise((res,rej)=>{
+   const tx=db.transaction('bench','readonly'),st=tx.objectStore('bench');
+   for(const k of order){const q=st.get('k'+k);q.onsuccess=()=>{const v=q.result;if(v)checksum+=v[0]}}
+   tx.oncomplete=res;tx.onerror=()=>rej(tx.error)
+  });
+  const randomOps=probes/((now()-t)/1000);STATE.blackhole=checksum;
+  await new Promise(res=>{const tx=db.transaction('bench','readwrite');tx.objectStore('bench').clear();tx.oncomplete=res});
+  db.close();
+  const sw=scoreHigher(write,REF.storageWriteMBs),sr=scoreHigher(randomOps,REF.storageRandomOps);
+  addMetric('storageWrite','IndexedDB sequential write',write,'MB/s',sw,'ブラウザ/OSキャッシュ・トランザクション処理込み');
+  addMetric('storageRead','IndexedDB sequential reread',seqRead,'MB/s',null,'直前に書いたデータのためキャッシュ影響大。Storage Indexには不使用');
+  addMetric('storageRandom','IndexedDB random chunk read',randomOps,'ops/s',sr,'512KiBチャンクを疑似ランダム順に読取');
+  STATE.result.scores.storage=weightedGMean([[sw,.65],[sr,.35]]);
+  log(`Storage: write ${fmt(write)} MB/s, reread ${fmt(seqRead)} MB/s, random ${fmt(randomOps)} ops/s; index ${fmt(STATE.result.scores.storage,0)}`,'g')
+ }catch(e){STATE.result.scores.storage=null;log('Storage skipped/error: '+e.message,'w')}
+}
 
-function weightedGMean(pairs){let sw=0,sl=0;for(const [v,w] of pairs){if(v&&v>0){sw+=w;sl+=w*Math.log(v)}}return sw?Math.exp(sl/sw):0}
-function finalizeScores(){const s=STATE.result.scores;s.general=weightedGMean([[s.single,.25],[s.multi,.20],[s.memory,.15],[s.gpu,.20],[s.storage,.10],[s.browser,.10]]);s.auto=weightedGMean([[s.single,.25],[s.multi,.35],[s.memory,.15],[s.tetris,.20],[s.sustained,.05]]);for(const [id,k] of [['sGeneral','general'],['sAuto','auto'],['sSingle','single'],['sMulti','multi'],['sMemory','memory'],['sTetris','tetris'],['sSustain','sustained'],['sBrowser','browser'],['sStorage','storage'],['sGpu','gpu']])setScore(id,s[k]);drawCategoryChart();diagnose();renderCompare();$('export').disabled=false}
-function diagnose(){const r=STATE.result,s=r.scores,lines=[];lines.push(`総合 Index ${fmt(s.general,0)} / AutoTrainer Index ${fmt(s.auto,0)}。`);if(r.recommendedWorkers)lines.push(`AutoTrainerは ${r.recommendedWorkers} Workers 推奨。論理CPU数をそのまま全投入するより、実測ピークの95%以上を最少Workerで取れる点を採用。`);if(r.preflight?.variation>.10)lines.push(`開始前CPUばらつき ${(r.preflight.variation*100).toFixed(1)}% と大きめ。バックグラウンド負荷の影響が疑われ、比較結果の信頼度は低下。`);else lines.push(`開始前の短時間ばらつきは ${(r.preflight?.variation*100||0).toFixed(1)}% で比較的安定。`);if(r.sustained){if(r.sustained.ratio<.80)lines.push(`長時間性能が初期の ${fmt(r.sustained.ratio*100)}% まで低下。冷却・電力制御・バックグラウンド負荷のいずれかが長時間計算のボトルネック候補。`);else if(r.sustained.ratio<.90)lines.push(`長時間負荷で ${fmt((1-r.sustained.ratio)*100)}% 程度低下。瞬間性能よりAutoTrainer実効性能は少し低めに見るべき。`);else lines.push(`長時間性能維持率 ${fmt(r.sustained.ratio*100)}%。持続計算はかなり安定。`)}if(s.tetris&&s.single){const rel=s.tetris/s.single;if(rel>1.18)lines.push('一般単コア性能に比べ、盤面解析＋小型NN処理が相対的に得意。Tetris系ワークロードとの相性は良好。');else if(rel<.82)lines.push('一般CPU性能に比べ、Tetris系の配列・分岐・小型NN処理が相対的に伸びにくい。');}if(s.multi&&s.single){const rel=s.multi/s.single;if(rel>1.5)lines.push('並列Worker性能が強い構成。Self-playや大量対戦に向く。');else if(rel<.9)lines.push('Worker並列の伸びが弱め。Worker数を増やしすぎるより少数精鋭が向く。')}if(s.gpu&&s.gpu<700)lines.push('WebGL2ブラウザGPU性能は相対的に弱め。ただし現行AutoTrainerはGPUをほぼ使わないため、AI学習適性への影響は小さい。');$('diagnosis').textContent=lines.join('\n\n')}
+async function benchGPU(cfg){
+ stage('GPU',80);
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;
+ const gl=canvas.getContext('webgl2',{antialias:false,depth:false,stencil:false,preserveDrawingBuffer:false});
+ if(!gl){STATE.result.scores.gpu=null;log('WebGL2 unavailable: GPU skipped','w');return}
+ const vs=`#version 300 es
+ in vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+ const fs=`#version 300 es
+ precision highp float;out vec4 o;uniform float t;
+ void main(){vec2 p=gl_FragCoord.xy/512.;float x=p.x+t;float y=p.y-t;
+ for(int i=0;i<32;i++){x=sin(x*1.71+y*.37)+cos(y*1.33-x*.21);y=sin(y*1.57+x*.41)+cos(x*1.19);}
+ o=vec4(fract(x),fract(y),fract(x*y),1.);}`;
+ function sh(type,src){const q=gl.createShader(type);gl.shaderSource(q,src);gl.compileShader(q);if(!gl.getShaderParameter(q,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(q));return q}
+ try{
+  const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p)||'WebGL link failed');
+  gl.useProgram(p);const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(p,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);const ut=gl.getUniformLocation(p,'t');
+  for(let i=0;i<12;i++){gl.uniform1f(ut,i*.01);gl.drawArrays(gl.TRIANGLES,0,3)}gl.finish();
+  let frames=0,t=now(),elapsed=0;
+  do{
+   for(let j=0;j<8;j++){gl.uniform1f(ut,(frames+j)*.001);gl.drawArrays(gl.TRIANGLES,0,3)}
+   frames+=8;gl.finish();elapsed=now()-t;checkStop();
+  }while(elapsed<cfg.gpuMinMs&&frames<8192);
+  const sec=elapsed/1000,mpix=frames*512*512/sec/1e6;
+  if(!Number.isFinite(mpix)||sec<.05||frames<8)throw new Error(`invalid GPU timing (${elapsed.toFixed(3)} ms)`);
+  const sg=scoreHigher(mpix,REF.gpuMPix);STATE.result.scores.gpu=sg;
+  addMetric('gpuShader','WebGL2 shader throughput',mpix,'MPix/s',sg,'gl.finish()で完了待ち。ネイティブGPUベンチとは比較不可');
+  log(`GPU/WebGL2: ${fmt(mpix)} MPix/s over ${fmt(elapsed,0)} ms / ${frames} frames`,'g')
+ }catch(e){STATE.result.scores.gpu=null;addMetric('gpuShader','WebGL2 shader throughput',NaN,'MPix/s',null,'測定不能のため総合点から除外');log('GPU test skipped/error: '+e.message,'w')}
+}
+
+async function benchSustained(cfg){
+ stage('SUSTAINED',86);
+ if(!cfg.sustainSec){log('Sustained skipped in Quick mode','w');return}
+ log(`Sustained CPU ${cfg.sustainSec}s: 約1秒ごとにthroughputを追跡`);
+ const c=calibrate(kernelInt,140),it=c.it,samples=[],end=now()+cfg.sustainSec*1000;
+ while(now()<end){checkStop();let ops=0,t0=now();while(now()-t0<900){kernelInt(it);ops+=it}const sec=(now()-t0)/1000;samples.push(ops/sec/1e6);stage('SUSTAINED',86+10*Math.min(1,(now()-(end-cfg.sustainSec*1000))/(cfg.sustainSec*1000)));await sleep(80)}
+ const edge=Math.min(Math.max(3,Math.floor(samples.length*.15)),12),first=median(samples.slice(0,edge)),last=median(samples.slice(-edge)),ratio=first?last/first:1;
+ const minV=Math.min(...samples),medianV=median(samples);
+ STATE.result.sustained={samples,first,last,ratio,min:minV,median:medianV,durationSec:cfg.sustainSec};
+ STATE.result.scores.sustained=Number.isFinite(ratio)?clamp(1000*ratio,300,1200):null;
+ addMetric('sustainedRatio','Sustained end / initial',ratio*100,'%',STATE.result.scores.sustained,`${cfg.sustainSec}s負荷。初期/終盤は各${edge}サンプルの中央値`);
+ addMetric('sustainedMin','Sustained minimum',minV,'M iter/s',null,'スコアには不使用');
+ drawSustainChart();$('sustainNote').textContent=`${cfg.sustainSec}s測定 / 初期 ${fmt(first)} → 終盤 ${fmt(last)} M/s / 維持率 ${fmt(ratio*100)}% / 最低 ${fmt(minV)} M/s`;
+ log(`Sustained ${cfg.sustainSec}s: ${fmt(ratio*100)}% (${fmt(first)} → ${fmt(last)} M/s), min ${fmt(minV)}`,ratio<.85?'w':'g')
+}
+
+function weightedGMean(pairs){let sw=0,sl=0;for(const [v,w] of pairs){if(Number.isFinite(v)&&v>0&&w>0){sw+=w;sl+=w*Math.log(v)}}return sw?Math.exp(sl/sw):null}
+function finalizeScores(){
+ const s=STATE.result.scores;
+ s.general=weightedGMean([[s.single,.25],[s.multi,.20],[s.memory,.15],[s.gpu,.20],[s.storage,.10],[s.browser,.10]]);
+ s.auto=weightedGMean([[s.single,.20],[s.multi,.15],[s.memory,.10],[s.tetris,.20],[s.tetrisMulti,.30],[s.sustained,.05]]);
+ for(const [id,k] of [['sGeneral','general'],['sAuto','auto'],['sSingle','single'],['sMulti','multi'],['sMemory','memory'],['sTetris','tetris'],['sSustain','sustained'],['sBrowser','browser'],['sStorage','storage'],['sGpu','gpu']])setScore(id,s[k]);
+ STATE.result.scoreCoverage={
+  general:[s.single,s.multi,s.memory,s.gpu,s.storage,s.browser].filter(v=>Number.isFinite(v)&&v>0).length,
+  auto:[s.single,s.multi,s.memory,s.tetris,s.tetrisMulti,s.sustained].filter(v=>Number.isFinite(v)&&v>0).length
+ };
+ drawCategoryChart();diagnose();renderCompare();$('export').disabled=false
+}
+function diagnose(){
+ const r=STATE.result,s=r.scores,lines=[];
+ lines.push(`総合 Index ${fmt(s.general,0)} / AutoTrainer Index ${fmt(s.auto,0)}。測定不能項目は重みを自動再配分。`);
+ if(r.recommendedWorkers)lines.push(`AutoTrainerは ${r.recommendedWorkers} Workers 推奨。単純整数ループではなく、盤面解析＋44→64→1 NNの実負荷スケーリングを優先。`);
+ if(r.recommendedWorkersGeneral&&r.recommendedWorkers&&r.recommendedWorkersGeneral!==r.recommendedWorkers)lines.push(`整数ループでは ${r.recommendedWorkersGeneral} Workers が有利だが、Tetris実負荷では ${r.recommendedWorkers} Workers。AutoTrainer用途では後者を採用。`);
+ if(r.preflight?.variation>.10)lines.push(`開始前CPUばらつき ${(r.preflight.variation*100).toFixed(1)}% と大きめ。バックグラウンド負荷の影響が疑われ、比較結果の信頼度は低下。`);
+ else lines.push(`開始前の短時間ばらつきは ${(r.preflight?.variation*100||0).toFixed(1)}% で比較的安定。`);
+ if(r.sustained){
+  const dur=r.sustained.durationSec||0;
+  if(r.sustained.ratio<.80)lines.push(`${dur}秒持続負荷で性能が初期の ${fmt(r.sustained.ratio*100)}% まで低下。冷却・電力制御・バックグラウンド負荷が候補。`);
+  else if(r.sustained.ratio<.90)lines.push(`${dur}秒持続負荷で ${fmt((1-r.sustained.ratio)*100)}% 程度低下。瞬間性能より長時間計算は少し低めに見るべき。`);
+  else lines.push(`${dur}秒持続性能維持率 ${fmt(r.sustained.ratio*100)}%。この測定時間内ではかなり安定。`);
+ }
+ if(s.tetris&&s.single){const rel=s.tetris/s.single;if(rel>1.18)lines.push('一般単コア性能に比べ、盤面解析＋小型NN処理が相対的に得意。');else if(rel<.82)lines.push('一般CPU性能に比べ、Tetris系の配列・分岐・Math.tanhを含む小型NN処理は相対的に伸びにくい。')}
+ if(s.tetrisMulti&&s.tetris){const rel=s.tetrisMulti/s.tetris;if(rel>1.7)lines.push('Tetris実負荷のWorker並列化が強い。Self-playや大量対戦に向く。');else if(rel<1.0)lines.push('Tetris実負荷はWorker化のオーバーヘッドが大きい。少数Workerが向く。')}
+ if(!Number.isFinite(s.gpu))lines.push('GPUは測定不能またはWebGL2非対応。GPUを0点/満点扱いせずGeneralから除外。');
+ if(r.metrics?.storageRead)lines.push('Storageの直後再読込はキャッシュ影響が大きいため、Storage Indexには使わず参考値扱い。');
+ $('diagnosis').textContent=lines.join('\n\n')
+}
 
 function canvasBase(id,title,yLabel){const c=$(id),ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#08111b';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#24364a';ctx.lineWidth=1;for(let i=1;i<5;i++){const y=i*h/5;ctx.beginPath();ctx.moveTo(50,y);ctx.lineTo(w-15,y);ctx.stroke()}ctx.fillStyle='#b8c9dc';ctx.font='18px system-ui';ctx.fillText(title,18,26);ctx.font='13px system-ui';ctx.fillStyle='#8fa7bf';ctx.fillText(yLabel,18,48);return {c,ctx,w,h}}
-function drawWorkerChart(){const rows=STATE.result?.workerScaling||[],{ctx,w,h}=canvasBase('workerChart','Worker throughput','M iter/s');if(!rows.length)return;const max=Math.max(...rows.map(x=>x.mops))*1.1,left=55,bottom=35,top=60,right=20;ctx.strokeStyle='#73b7ff';ctx.lineWidth=3;ctx.beginPath();rows.forEach((r,i)=>{const x=left+(w-left-right)*(i/(Math.max(1,rows.length-1))),y=top+(h-top-bottom)*(1-r.mops/max);i?ctx.lineTo(x,y):ctx.moveTo(x,y);ctx.fillStyle='#8ad1ff';ctx.fillRect(x-3,y-3,6,6);ctx.fillStyle='#aabed2';ctx.font='12px system-ui';ctx.fillText(String(r.workers),x-4,h-12)});ctx.stroke();ctx.fillStyle='#8097ae';ctx.fillText('workers →',w-85,h-12)}
+function drawWorkerChart(){
+ const rows=STATE.result?.workerScaling||[],tr=STATE.result?.tetrisWorkerScaling||[],{ctx,w,h}=canvasBase('workerChart','Worker throughput','relative to 1 worker');
+ if(!rows.length&&!tr.length)return;
+ const left=55,bottom=38,top=65,right=20;
+ const all=[...rows.map(x=>x.speedup||1),...tr.map(x=>x.speedup||1)],max=Math.max(1.2,...all)*1.08;
+ const draw=(arr,stroke,fill)=>{
+  if(!arr.length)return;ctx.strokeStyle=stroke;ctx.lineWidth=3;ctx.beginPath();
+  arr.forEach((r,i)=>{const x=left+(w-left-right)*(i/Math.max(1,arr.length-1)),y=top+(h-top-bottom)*(1-(r.speedup||1)/max);i?ctx.lineTo(x,y):ctx.moveTo(x,y);ctx.fillStyle=fill;ctx.fillRect(x-3,y-3,6,6);ctx.fillStyle='#aabed2';ctx.font='12px system-ui';ctx.fillText(String(r.workers),x-4,h-12)});ctx.stroke()
+ };
+ draw(rows,'#73b7ff','#8ad1ff');draw(tr,'#70e3a0','#8ff0b6');
+ ctx.fillStyle='#73b7ff';ctx.fillRect(w-215,20,18,3);ctx.fillStyle='#b7c8da';ctx.fillText('integer',w-190,25);
+ ctx.fillStyle='#70e3a0';ctx.fillRect(w-120,20,18,3);ctx.fillStyle='#b7c8da';ctx.fillText('Tetris',w-95,25);
+ ctx.fillStyle='#8097ae';ctx.fillText('workers →',w-85,h-12)
+}
 function drawSustainChart(){const a=STATE.result?.sustained?.samples||[],{ctx,w,h}=canvasBase('sustainChart','Sustained throughput','M iter/s');if(!a.length)return;const min=Math.min(...a)*.92,max=Math.max(...a)*1.05,left=55,bottom=30,top=58,right=20;ctx.strokeStyle='#70e3a0';ctx.lineWidth=3;ctx.beginPath();a.forEach((v,i)=>{const x=left+(w-left-right)*(i/Math.max(1,a.length-1)),y=top+(h-top-bottom)*(1-(v-min)/Math.max(1e-9,max-min));i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle='#8fa7bf';ctx.font='12px system-ui';ctx.fillText(`0s`,left,h-10);ctx.fillText(`${a.length}s`,w-45,h-10)}
-function drawCategoryChart(){const s=STATE.result?.scores||{},items=[['Single',s.single],['Multi',s.multi],['Memory',s.memory],['Tetris',s.tetris],['Sustain',s.sustained],['Browser',s.browser],['Storage',s.storage],['GPU',s.gpu]].filter(x=>x[1]);const {ctx,w,h}=canvasBase('categoryChart','Category indices','1000 = DeviceLab v1 ref');if(!items.length)return;const max=Math.max(1500,...items.map(x=>x[1]))*1.05,left=90,right=20,top=58,bottom=25,bh=(h-top-bottom)/items.length;items.forEach(([name,v],i)=>{const y=top+i*bh+bh*.18,ww=(w-left-right)*(v/max);ctx.fillStyle='#244968';ctx.fillRect(left,y,w-left-right,bh*.6);ctx.fillStyle=v>=1100?'#70e3a0':v>=750?'#78b7ff':'#ffd166';ctx.fillRect(left,y,ww,bh*.6);ctx.fillStyle='#b7c8da';ctx.font='12px system-ui';ctx.fillText(name,15,y+bh*.43);ctx.fillText(fmt(v,0),left+Math.min(ww+6,w-left-right-35),y+bh*.43)})}
+function drawCategoryChart(){const s=STATE.result?.scores||{},items=[['Single',s.single],['Multi',s.multi],['Memory',s.memory],['Tetris',s.tetris],['Tetris×W',s.tetrisMulti],['Sustain',s.sustained],['Browser',s.browser],['Storage',s.storage],['GPU',s.gpu]].filter(x=>Number.isFinite(x[1])&&x[1]>0);const {ctx,w,h}=canvasBase('categoryChart','Category indices','1000 = DeviceLab v1.1 ref');if(!items.length)return;const max=Math.max(1500,...items.map(x=>x[1]))*1.05,left=90,right=20,top=58,bottom=25,bh=(h-top-bottom)/items.length;items.forEach(([name,v],i)=>{const y=top+i*bh+bh*.18,ww=(w-left-right)*(v/max);ctx.fillStyle='#244968';ctx.fillRect(left,y,w-left-right,bh*.6);ctx.fillStyle=v>=1100?'#70e3a0':v>=750?'#78b7ff':'#ffd166';ctx.fillRect(left,y,ww,bh*.6);ctx.fillStyle='#b7c8da';ctx.font='12px system-ui';ctx.fillText(name,15,y+bh*.43);ctx.fillText(fmt(v,0),left+Math.min(ww+6,w-left-right-35),y+bh*.43)})}
 
-function collectMeta(){return {deviceName:$('devName').value.trim(),cpuName:$('cpuName').value.trim(),gpuName:$('gpuName').value.trim(),ramGB:+$('ramGB').value||null,storageType:$('storageType').value,notes:$('notes').value.trim(),userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency||null,deviceMemory:navigator.deviceMemory||null,screen:`${screen.width}x${screen.height}@${devicePixelRatio||1}`,webgl:getWebGLInfo()}}
-async function runAll(){if(STATE.running)return;STATE.running=true;STATE.stop=false;$('start').disabled=true;$('stop').disabled=false;$('export').disabled=true;$('log').innerHTML='';const cfg=MODE[$('mode').value];STATE.result={schema:1,app:'DeviceLab Browser Benchmark',version:'1.0',created:new Date().toISOString(),mode:$('mode').value,meta:collectMeta(),metrics:{},scores:{},variance:{},workerScaling:[],sustained:null,recommendedWorkers:null};try{await preflight();await benchSingle(cfg);await benchMulti(cfg);await benchMemory(cfg);await benchTetris(cfg);await benchBrowser(cfg);await benchStorage(cfg);await benchGPU(cfg);await benchSustained(cfg);stage('FINALIZE',98);finalizeScores();stage('DONE',100);log('Benchmark complete','g')}catch(e){if(e.message==='__STOP__'){stage('STOPPED',0);log('停止しました','w');if(Object.keys(STATE.result.metrics).length){finalizeScores()}}else{stage('ERROR',0);log(e.stack||e.message,'b');console.error(e)}}finally{STATE.running=false;$('start').disabled=false;$('stop').disabled=true}}
+function collectMeta(){return {deviceName:$('devName').value.trim(),cpuName:$('cpuName').value.trim(),gpuName:$('gpuName').value.trim(),ramGB:+$('ramGB').value||null,storageType:$('storageType').value,secondaryStorage:$('secondaryStorage').value.trim(),notes:$('notes').value.trim(),userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency||null,deviceMemory:navigator.deviceMemory||null,screen:`${screen.width}x${screen.height}@${devicePixelRatio||1}`,webgl:getWebGLInfo()}}
+async function runAll(){if(STATE.running)return;STATE.running=true;STATE.stop=false;$('start').disabled=true;$('stop').disabled=false;$('export').disabled=true;$('log').innerHTML='';const cfg=MODE[$('mode').value];STATE.result={schema:2,app:'DeviceLab Browser Benchmark',version:'1.1',created:new Date().toISOString(),mode:$('mode').value,meta:collectMeta(),metrics:{},scores:{},variance:{},workerScaling:[],tetrisWorkerScaling:[],sustained:null,recommendedWorkers:null,recommendedWorkersGeneral:null};try{await preflight();await benchSingle(cfg);await benchMulti(cfg);await benchMemory(cfg);await benchTetris(cfg);await benchTetrisWorkers(cfg);await benchBrowser(cfg);await benchStorage(cfg);await benchGPU(cfg);await benchSustained(cfg);stage('FINALIZE',98);finalizeScores();stage('DONE',100);log('Benchmark complete','g')}catch(e){if(e.message==='__STOP__'){stage('STOPPED',0);log('停止しました','w');if(Object.keys(STATE.result.metrics).length){finalizeScores()}}else{stage('ERROR',0);log(e.stack||e.message,'b');console.error(e)}}finally{STATE.running=false;$('start').disabled=false;$('stop').disabled=true}}
 function exportJSON(){if(!STATE.result)return;const blob=new Blob([JSON.stringify(STATE.result,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);const name=(STATE.result.meta.deviceName||'device').replace(/[^a-zA-Z0-9ぁ-んァ-ヶ一-龠_-]+/g,'_');a.download=`devicelab_${name}_${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function renderCompare(){const box=$('compare'),a=STATE.result,b=STATE.compare;if(!a||!b){box.textContent=b?'現在結果を測定すると比較します。':'結果JSONを読み込むと現在結果と比較します。';return}const keys=[['general','General'],['auto','AutoTrainer'],['single','CPU Single'],['multi','CPU Multi'],['memory','Memory'],['tetris','Tetris AI'],['sustained','Sustained'],['browser','Browser'],['storage','Storage'],['gpu','GPU']];box.innerHTML=`<div class="mini">比較対象: ${escapeHTML(b.meta?.deviceName||b.meta?.cpuName||'Imported result')}</div>`;for(const [k,label] of keys){const av=a.scores?.[k],bv=b.scores?.[k];if(!av||!bv)continue;const pct=(av/bv-1)*100,row=document.createElement('div');row.className='compareRow';row.innerHTML=`<span>${label}</span><div class="track"><i style="width:${clamp(50+25*Math.log2(av/bv),4,96)}%"></i></div><b class="${pct>=0?'score good':'score bad'}">${pct>=0?'+':''}${pct.toFixed(0)}%</b>`;box.appendChild(row)}}
+function renderCompare(){const box=$('compare'),a=STATE.result,b=STATE.compare;if(!a||!b){box.textContent=b?'現在結果を測定すると比較します。':'結果JSONを読み込むと現在結果と比較します。';return}const keys=[['general','General'],['auto','AutoTrainer'],['single','CPU Single'],['multi','CPU Multi'],['memory','Memory'],['tetris','Tetris AI'],['tetrisMulti','Tetris Multi'],['sustained','Sustained'],['browser','Browser'],['storage','Storage'],['gpu','GPU']];
+ const mismatch=a.version!==b.version;
+ box.innerHTML=`<div class="mini">比較対象: ${escapeHTML(b.meta?.deviceName||b.meta?.cpuName||'Imported result')} / DeviceLab ${escapeHTML(b.version||'?')}${mismatch?'<br><b style="color:#ffd166">注意: バージョンが異なるためIndex同士の直接比較は非推奨。生の実測値を優先。</b>':''}</div>`;for(const [k,label] of keys){const av=a.scores?.[k],bv=b.scores?.[k];if(!av||!bv)continue;const pct=(av/bv-1)*100,row=document.createElement('div');row.className='compareRow';row.innerHTML=`<span>${label}</span><div class="track"><i style="width:${clamp(50+25*Math.log2(av/bv),4,96)}%"></i></div><b class="${pct>=0?'score good':'score bad'}">${pct>=0?'+':''}${pct.toFixed(0)}%</b>`;box.appendChild(row)}}
 $('start').onclick=runAll;$('stop').onclick=()=>{STATE.stop=true;log('停止要求を受け付けました','w')};$('export').onclick=exportJSON;$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x||x.app!=='DeviceLab Browser Benchmark')throw new Error('DeviceLab result JSONではありません');STATE.compare=x;log(`比較JSON読込: ${x.meta?.deviceName||x.meta?.cpuName||x.created}`,'g');renderCompare()}catch(err){log('Import error: '+err.message,'b')}e.target.value=''};
-fillAutoInfo();drawWorkerChart();drawSustainChart();drawCategoryChart();log('DeviceLab v1 ready');
+fillAutoInfo();drawWorkerChart();drawSustainChart();drawCategoryChart();log('DeviceLab v1.1 ready');
 </script>
 </body>
 </html>
