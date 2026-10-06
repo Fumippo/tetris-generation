@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TETRIS AI ARENA · AI v5</title>
+<style>
+:root{
+  --bg:#0d0f14;--panel:#171a21;--panel2:#20242d;--line:#303641;--text:#f4f6fa;
+  --muted:#969eae;--accent:#7aa2ff;--good:#78dba9;--warn:#ffcf70;--bad:#ff7f8f;
+  --cell:28px;--radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+#app{height:100%;display:flex;flex-direction:column}
+.topbar{
+  height:64px;flex:0 0 64px;border-bottom:1px solid var(--line);background:rgba(20,23,29,.96);
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px;gap:16px;z-index:10
+}
+.brand{display:flex;align-items:center;gap:12px;min-width:230px}
+.logo{
+  width:38px;height:38px;border-radius:11px;background:linear-gradient(145deg,#f3f5fa,#878fa0);
+  color:#11151d;font-weight:1000;display:grid;place-items:center;box-shadow:0 6px 24px rgba(0,0,0,.28)
+}
+.brand-title{font-size:16px;font-weight:950;letter-spacing:.08em}
+.brand-sub{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.12em;margin-top:1px}
+.top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.chip,.btn{
+  border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:10px;padding:8px 11px;
+  font-size:12px;font-weight:800;transition:.15s ease
+}
+.btn:hover{border-color:#596171;background:#292e39}
+.btn.primary{background:#ecf0f8;color:#11151c;border-color:#ecf0f8}
+.btn.primary:hover{background:#fff}
+.btn.danger{color:#ffc2c9}
+.btn.active{outline:2px solid var(--accent);outline-offset:-2px}
+.chip{cursor:default;color:var(--muted)}
+.chip b{color:var(--text)}
+.workspace{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:14px 18px 18px;overflow:auto}
+.arena-grid{display:grid;grid-template-columns:1fr;gap:18px;align-items:center;justify-content:center}
+.arena-grid.dual{grid-template-columns:repeat(2,minmax(470px,560px))}
+.player-card{
+  background:linear-gradient(180deg,rgba(28,32,40,.98),rgba(20,23,29,.98));border:1px solid var(--line);
+  border-radius:20px;padding:14px;box-shadow:0 18px 60px rgba(0,0,0,.24)
+}
+.player-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px;gap:12px}
+.player-name{font-weight:950;font-size:13px;letter-spacing:.08em}
+.player-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.badge{font-size:10px;font-weight:900;color:var(--muted);border:1px solid var(--line);padding:4px 7px;border-radius:999px;background:#12151b}
+.player-layout{display:grid;grid-template-columns:112px 280px 112px;gap:10px;align-items:start;justify-content:center}
+.sidecol{display:flex;flex-direction:column;gap:10px}
+.box{border:1px solid var(--line);background:#11141a;border-radius:13px;padding:9px}
+.box-title{font-size:9px;color:var(--muted);font-weight:950;letter-spacing:.14em;margin-bottom:6px}
+.mini-canvas{width:94px;height:62px;display:block;background:#0a0c10;border-radius:8px}
+.next-canvas{width:94px;height:246px;display:block;background:#0a0c10;border-radius:8px}
+.board-wrap{position:relative;width:280px}
+.board-canvas{
+  width:280px;height:560px;display:block;background:#080a0e;border:1px solid #3a414e;border-radius:8px;
+  box-shadow:0 12px 36px rgba(0,0,0,.32)
+}
+.board-overlay{
+  position:absolute;inset:0;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:rgba(7,9,12,.72);backdrop-filter:blur(2px);font-size:22px;font-weight:1000;letter-spacing:.1em;text-align:center
+}
+.event-pop{
+  position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);pointer-events:none;text-align:center;
+  font-weight:1000;text-shadow:0 3px 12px #000;opacity:0;transition:.12s
+}
+.event-pop.show{animation:eventPop .72s ease-out forwards}
+.event-pop .main{font-size:23px;letter-spacing:.05em}
+.event-pop .sub{font-size:11px;color:#d8dde8;margin-top:4px}
+@keyframes eventPop{0%{opacity:0;transform:translate(-50%,-35%) scale(.85)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}72%{opacity:1}100%{opacity:0;transform:translate(-50%,-62%) scale(.98)}}
+.stat-list{display:grid;gap:7px}
+.stat-row{display:flex;align-items:flex-end;justify-content:space-between;gap:6px;border-bottom:1px solid #242933;padding-bottom:5px}
+.stat-row:last-child{border:0;padding-bottom:0}
+.stat-k{font-size:9px;color:var(--muted);font-weight:800;letter-spacing:.08em}
+.stat-v{font-size:13px;font-weight:950;font-variant-numeric:tabular-nums}
+.ai-thought{font-size:9px;color:#b8c0cf;line-height:1.42;min-height:62px;white-space:pre-line}
+.garbage-meter{height:88px;border:1px solid var(--line);border-radius:7px;display:flex;flex-direction:column-reverse;overflow:hidden;background:#0a0c10}
+.garbage-fill{width:100%;background:linear-gradient(#ffb36b,#ff6578);height:0%;transition:height .1s}
+.bottom-help{
+  flex:0 0 auto;border-top:1px solid var(--line);background:#12151b;color:var(--muted);font-size:10px;
+  padding:7px 14px;text-align:center;font-weight:700;letter-spacing:.02em
+}
+.modal-layer{position:fixed;inset:0;background:rgba(5,7,10,.82);backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal{width:min(920px,96vw);max-height:92vh;overflow:auto;background:#171a21;border:1px solid #3a414d;border-radius:22px;box-shadow:0 32px 100px rgba(0,0,0,.5);padding:22px}
+.modal.small{width:min(560px,96vw)}
+.modal h1,.modal h2{margin:0}
+.modal h1{font-size:28px;letter-spacing:.06em}
+.modal h2{font-size:19px}
+.modal p{color:var(--muted);font-size:12px;line-height:1.65}
+.mode-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:18px 0}
+.mode-card{border:1px solid var(--line);border-radius:14px;padding:15px;background:#11141a;cursor:pointer;transition:.14s}
+.mode-card:hover{border-color:#626b7c;background:#1d2129}
+.mode-card.selected{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.mode-card strong{display:block;font-size:14px;margin-bottom:4px}
+.mode-card span{display:block;color:var(--muted);font-size:10px;line-height:1.5}
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:9px;font-weight:900;color:var(--muted);letter-spacing:.08em}
+.field input,.field select{
+  width:100%;background:#0d1015;border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:9px;outline:none
+}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+.section{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.key{background:#101319;border:1px solid var(--line);border-radius:9px;padding:8px}
+.key b{display:block;font-size:11px}.key span{font-size:9px;color:var(--muted)}
+.result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:15px}
+.result-cell{background:#101319;border:1px solid var(--line);border-radius:11px;padding:10px}
+.result-cell span{display:block;color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.08em}
+.result-cell b{display:block;margin-top:3px;font-size:18px}
+.debug-panel{
+  position:fixed;right:14px;bottom:38px;width:310px;max-height:44vh;overflow:auto;background:rgba(13,16,21,.96);
+  border:1px solid var(--line);border-radius:13px;padding:10px;z-index:20;font-size:10px
+}
+.debug-panel h3{font-size:11px;margin:0 0 7px}
+.debug-line{display:grid;grid-template-columns:24px 1fr 66px;gap:6px;padding:4px 0;border-bottom:1px solid #292e37}
+.debug-line:last-child{border:0}
+.debug-line span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:1100px){
+  html,body{overflow:auto}.workspace{align-items:flex-start}
+  .arena-grid.dual{grid-template-columns:1fr}
+}
+@media(max-height:760px){
+  :root{--cell:24px}
+  .player-layout{grid-template-columns:104px 240px 104px}.board-wrap,.board-canvas{width:240px}.board-canvas{height:480px}
+  .mini-canvas,.next-canvas{width:86px}.next-canvas{height:215px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">T</div>
+      <div><div class="brand-title">TETRIS AI ARENA</div><div class="brand-sub">PLAY / VS CPU / AI OBSERVER</div></div>
+    </div>
+    <div class="top-actions">
+      <span class="chip">MODE <b id="hud-mode">MARATHON</b></span>
+      <span class="chip">SEED <b id="hud-seed">-</b></span>
+      <button class="btn" id="btn-pause">一時停止</button>
+      <button class="btn" id="btn-step">1手進む</button>
+      <select class="btn" id="speed-select" title="観戦速度">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+      </select>
+      <button class="btn" id="btn-ai-debug">AI思考</button>
+      <button class="btn" id="btn-settings">設定</button>
+      <button class="btn" id="btn-menu">メニュー</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div id="arena-grid" class="arena-grid"></div>
+  </main>
+  <div class="bottom-help">A / D: 左右移動　← / →: 左右回転　↓: ソフトドロップ　↑: ハードドロップ　C: HOLD　P / Esc: 一時停止</div>
+</div>
+
+<div id="menu-modal" class="modal-layer">
+  <div class="modal">
+    <h1>TETRIS AI ARENA</h1>
+    <p>普通に遊ぶだけでなく、CPUの打ち筋そのものを観察できるテトリス。AIの思考力と配置速度は別々に設定できます。</p>
+    <div class="mode-grid" id="mode-grid">
+      <div class="mode-card selected" data-mode="marathon"><strong>MARATHON</strong><span>通常の1人用。10ラインごとにレベル上昇。</span></div>
+      <div class="mode-card" data-mode="sprint"><strong>SPRINT 40L</strong><span>40ライン消去までのタイムを計測。</span></div>
+      <div class="mode-card" data-mode="vs_cpu"><strong>VS CPU</strong><span>Garbage攻撃あり。CPUの思考力とPPSを個別設定。</span></div>
+      <div class="mode-card" data-mode="cpu_cpu"><strong>CPU vs CPU</strong><span>AI同士をリアルタイム観戦。一時停止・1手送り対応。</span></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>SEED</label><input id="menu-seed" type="number" placeholder="空欄でランダム"></div>
+      <div class="field"><label>CPU A LEVEL</label><select id="menu-ai-level">
+        <option value="1">1 - Beginner</option><option value="2">2 - Basic</option><option value="3">3 - Stable</option>
+        <option value="4">4 - Lookahead I</option><option value="5" selected>5 - Lookahead II</option>
+        <option value="6">6 - Garbage Aware</option><option value="7">7 - T-Spin Planner</option>
+        <option value="8">8 - VS Tactics</option><option value="9">9 - Expert</option>
+      </select></div>
+      <div class="field"><label>CPU A PPS</label><input id="menu-ai-pps" type="number" min="0.3" max="4" step="0.1" value="1.35"></div>
+      <div class="field"><label>CPU A STYLE</label><select id="menu-ai-style">
+        <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option>
+        <option value="defensive">Defensive</option><option value="tspin">T-Spin Specialist</option>
+      </select></div>
+      <div class="field"><label>CPU B LEVEL</label><select id="menu-ai-level-b">
+        <option value="1">1 - Beginner</option><option value="2">2 - Basic</option><option value="3">3 - Stable</option>
+        <option value="4">4 - Lookahead I</option><option value="5">5 - Lookahead II</option>
+        <option value="6" selected>6 - Garbage Aware</option><option value="7">7 - T-Spin Planner</option>
+        <option value="8">8 - VS Tactics</option><option value="9">9 - Expert</option>
+      </select></div>
+      <div class="field"><label>CPU B PPS</label><input id="menu-ai-pps-b" type="number" min="0.3" max="4" step="0.1" value="1.35"></div>
+      <div class="field"><label>CPU B STYLE</label><select id="menu-ai-style-b">
+        <option value="balanced">Balanced</option><option value="aggressive" selected>Aggressive</option>
+        <option value="defensive">Defensive</option><option value="tspin">T-Spin Specialist</option>
+      </select></div>
+    </div>
+    <div class="section">
+      <div style="font-size:11px;font-weight:950;margin-bottom:8px">実装済みコアルール</div>
+      <div class="keys">
+        <div class="key"><b>7-BAG</b><span>7種を1個ずつシャッフル</span></div>
+        <div class="key"><b>SRS</b><span>I専用Kickを含む</span></div>
+        <div class="key"><b>T-SPIN</b><span>Mini / Single / Double / Triple</span></div>
+        <div class="key"><b>VS</b><span>B2B / Combo / Garbage相殺</span></div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn" id="btn-replay-last">前回リプレイ</button><button class="btn primary" id="btn-start">ゲーム開始</button></div>
+  </div>
+</div>
+
+<div id="settings-modal" class="modal-layer hidden">
+  <div class="modal small">
+    <h2>SETTINGS</h2>
+    <div class="form-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="field"><label>DAS (ms)</label><input id="set-das" type="number" min="40" max="400" value="120"></div>
+      <div class="field"><label>ARR (ms)</label><input id="set-arr" type="number" min="0" max="100" value="18"></div>
+      <div class="field"><label>LOCK DELAY (ms)</label><input id="set-lock" type="number" min="100" max="1500" value="500"></div>
+      <div class="field"><label>SOFT DROP (ms/cell)</label><input id="set-soft" type="number" min="5" max="100" value="22"></div>
+      <div class="field"><label>SOUND</label><select id="set-sound"><option value="1">ON</option><option value="0">OFF</option></select></div>
+      <div class="field"><label>GHOST</label><select id="set-ghost"><option value="1">ON</option><option value="0">OFF</option></select></div>
+    </div>
+    <p>キー配置は固定初期値：A=左、D=右、←=左回転、→=右回転、C=HOLD、↓=ソフトドロップ、↑=ハードドロップ。</p>
+    <div class="modal-actions"><button class="btn" id="btn-settings-close">閉じる</button><button class="btn primary" id="btn-settings-save">保存</button></div>
+  </div>
+</div>
+
+<div id="result-modal" class="modal-layer hidden">
+  <div class="modal small">
+    <h2 id="result-title">RESULT</h2>
+    <p id="result-desc"></p>
+    <div class="result-grid" id="result-grid"></div>
+    <div class="modal-actions">
+      <button class="btn" id="btn-export-replay">リプレイJSON保存</button>
+      <button class="btn" id="btn-result-menu">メニュー</button>
+      <button class="btn primary" id="btn-retry">再戦</button>
+    </div>
+  </div>
+</div>
+
+<div id="ai-debug-panel" class="debug-panel hidden">
+  <h3>AI CANDIDATES</h3>
+  <div id="ai-debug-body">CPU戦を開始すると候補手を表示します。</div>
+</div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   Utilities / constants
+========================================================= */
+const COLS = 10, VISIBLE_ROWS = 20, HIDDEN_ROWS = 4, ROWS = VISIBLE_ROWS + HIDDEN_ROWS;
+const PIECE_NAMES = ['I','J','L','O','S','T','Z'];
+const COLORS = {
+  I:'#53c7e8',J:'#5a78e8',L:'#e99a45',O:'#e8cc55',S:'#61c77a',T:'#a673db',Z:'#e46672',G:'#606875'
+};
+const MODE_LABEL = {marathon:'MARATHON', sprint:'SPRINT 40L', vs_cpu:'VS CPU', cpu_cpu:'CPU vs CPU'};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const deepBoard=b=>b.map(r=>r.slice());
+const now=()=>performance.now();
+
+class PRNG{
+  constructor(seed){this.state=(seed>>>0)||0x12345678}
+  next(){
+    let t=this.state+=0x6D2B79F5;
+    t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);
+    return ((t^t>>>14)>>>0)/4294967296;
+  }
+  int(n){return Math.floor(this.next()*n)}
+  range(a,b){return a+(b-a)*this.next()}
+}
+class Bag{
+  constructor(rng){this.rng=rng;this.q=[]}
+  fill(){
+    const a=PIECE_NAMES.slice();
+    for(let i=a.length-1;i>0;i--){const j=this.rng.int(i+1);[a[i],a[j]]=[a[j],a[i]]}
+    this.q.push(...a);
+  }
+  next(){if(this.q.length<7)this.fill();return this.q.shift()}
+}
+
+/* SRS-compatible piece states in 4x4 local coordinates */
+const SHAPES={
+I:[
+ [[0,1],[1,1],[2,1],[3,1]], [[2,0],[2,1],[2,2],[2,3]],
+ [[0,2],[1,2],[2,2],[3,2]], [[1,0],[1,1],[1,2],[1,3]]
+],
+O:[
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]],
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]]
+],
+T:[
+ [[1,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[2,1],[1,2]], [[1,0],[0,1],[1,1],[1,2]]
+],
+J:[
+ [[0,0],[0,1],[1,1],[2,1]], [[1,0],[2,0],[1,1],[1,2]],
+ [[0,1],[1,1],[2,1],[2,2]], [[1,0],[1,1],[0,2],[1,2]]
+],
+L:[
+ [[2,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[1,2],[2,2]],
+ [[0,1],[1,1],[2,1],[0,2]], [[0,0],[1,0],[1,1],[1,2]]
+],
+S:[
+ [[1,0],[2,0],[0,1],[1,1]], [[1,0],[1,1],[2,1],[2,2]],
+ [[1,1],[2,1],[0,2],[1,2]], [[0,0],[0,1],[1,1],[1,2]]
+],
+Z:[
+ [[0,0],[1,0],[1,1],[2,1]], [[2,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[1,2],[2,2]], [[1,0],[0,1],[1,1],[0,2]]
+]
+};
+/* y is positive downward, therefore standard SRS y offsets are inverted */
+const KICKS_JLSTZ={
+ '0>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '1>0':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '1>2':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '2>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '2>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]],
+ '3>2':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '3>0':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '0>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]]
+};
+const KICKS_I={
+ '0>1':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '1>0':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '1>2':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]],
+ '2>1':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '2>3':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '3>2':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '3>0':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '0>3':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]]
+};
+function cellsOf(piece){
+  return SHAPES[piece.type][piece.rot].map(([dx,dy])=>[piece.x+dx,piece.y+dy]);
+}
+function collides(board,piece){
+  for(const [x,y] of cellsOf(piece)){
+    if(x<0||x>=COLS||y>=ROWS)return true;
+    if(y>=0&&board[y][x])return true;
+  }
+  return false;
+}
+function grounded(board,p){const q={...p,y:p.y+1};return collides(board,q)}
+function tryRotateOn(board,p,dir){
+  if(p.type==='O')return {piece:{...p,rot:(p.rot+(dir>0?1:3))%4},kickIndex:0};
+  const nr=(p.rot+(dir>0?1:3))%4,key=`${p.rot}>${nr}`;
+  const kicks=p.type==='I'?KICKS_I[key]:KICKS_JLSTZ[key];
+  for(let i=0;i<(kicks||[[0,0]]).length;i++){
+    const [kx,ky]=(kicks||[[0,0]])[i],q={...p,x:p.x+kx,y:p.y+ky,rot:nr};
+    if(!collides(board,q))return {piece:q,kickIndex:i};
+  }
+  return null;
+}
+function dropY(board,p){let q={...p};while(!collides(board,{...q,y:q.y+1}))q.y++;return q}
+function makeBoard(){return Array.from({length:ROWS},()=>Array(COLS).fill(null))}
+function clearCompletedLines(board){
+  // Remove all completed rows as one batch. Adding empty rows after each
+  // splice shifts the indexes of the remaining completed rows and can skip one.
+  const remaining=board.filter(row=>!row.every(Boolean));
+  const lines=ROWS-remaining.length;
+  if(lines>0){
+    const empty=Array.from({length:lines},()=>Array(COLS).fill(null));
+    board.splice(0,board.length,...empty,...remaining);
+  }
+  return lines;
+}
+
+/* =========================================================
+   Audio
+========================================================= */
+class SoundFX{
+  constructor(){this.ctx=null;this.enabled=true}
+  tone(freq=440,dur=.05,type='sine',gain=.035){
+    if(!this.enabled)return;
+    try{
+      if(!this.ctx)this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+      if(this.ctx.state==='suspended')this.ctx.resume();
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain(),t=this.ctx.currentTime;
+      o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(gain,t);
+      g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(this.ctx.destination);o.start(t);o.stop(t+dur);
+    }catch(_){}
+  }
+  move(){this.tone(180,.025,'square',.018)}
+  rotate(){this.tone(260,.035,'square',.02)}
+  hard(){this.tone(95,.07,'triangle',.045)}
+  clear(n){this.tone(n===4?700:480+n*65,.12,'sine',.05)}
+  tspin(){this.tone(850,.16,'triangle',.06)}
+  ko(){this.tone(80,.45,'sawtooth',.07)}
+}
+const sfx=new SoundFX();
+
+/* =========================================================
+   T-Spin, scoring and attack
+========================================================= */
+function occupiedOrWall(board,x,y){return x<0||x>=COLS||y<0||y>=ROWS||!!board[y][x]}
+function detectTSpin(board,p,lastWasRotate,lastKickIndex){
+  if(p.type!=='T'||!lastWasRotate)return {type:'none',corners:0};
+  const cx=p.x+1,cy=p.y+1;
+  const c=[
+    occupiedOrWall(board,cx-1,cy-1),occupiedOrWall(board,cx+1,cy-1),
+    occupiedOrWall(board,cx-1,cy+1),occupiedOrWall(board,cx+1,cy+1)
+  ];
+  const count=c.filter(Boolean).length;if(count<3)return {type:'none',corners:count};
+  const fronts={0:[0,1],1:[1,3],2:[2,3],3:[0,2]}[p.rot];
+  const frontCount=fronts.reduce((s,i)=>s+(c[i]?1:0),0);
+  return {type:(frontCount===2||lastKickIndex===4)?'full':'mini',corners:count};
+}
+function attackFor(lines,tspinType,b2bBefore,combo,perfectClear){
+  let atk=0;
+  if(tspinType==='full')atk=[0,2,4,6][lines]||0;
+  else if(tspinType==='mini')atk=lines===1?1:0;
+  else atk=[0,0,1,2,4][lines]||0;
+  const difficult=(lines===4||(tspinType!=='none'&&lines>0));
+  if(difficult&&b2bBefore)atk+=1;
+  if(combo>0){
+    const table=[0,0,1,1,2,2,3,3,4,4,5,5,5];
+    atk+=table[Math.min(combo,table.length-1)];
+  }
+  if(perfectClear)atk+=10;
+  return atk;
+}
+function scoreFor(lines,tspinType,b2bBefore,combo,level,perfectClear){
+  let s=0;
+  if(tspinType==='full')s=[400,800,1200,1600][lines]||0;
+  else if(tspinType==='mini')s=lines===1?200:100;
+  else s=[0,100,300,500,800][lines]||0;
+  if((lines===4||(tspinType!=='none'&&lines>0))&&b2bBefore)s=Math.floor(s*1.5);
+  if(combo>0)s+=50*combo;
+  if(perfectClear)s+=3500;
+  return s*Math.max(1,level);
+}
+
+/* =========================================================
+   Game board
+========================================================= */
+class TetrisGame{
+  constructor(opts){
+    Object.assign(this,opts);
+    this.rng=new PRNG(opts.seed);
+    this.garbageRng=new PRNG((opts.seed^0x9E3779B9)>>>0);
+    this.bag=new Bag(this.rng);
+    this.reset();
+  }
+  reset(){
+    this.board=makeBoard();this.queue=[];while(this.queue.length<7)this.queue.push(this.bag.next());
+    this.hold=null;this.holdUsed=false;this.active=null;this.gameOver=false;this.finished=false;
+    this.score=0;this.lines=0;this.level=1;this.combo=-1;this.b2b=false;this.maxCombo=0;
+    this.pieces=0;this.attacks=0;this.received=0;this.pendingGarbage=0;
+    this.tetrisCount=0;this.tspinCount=0;this.tspinDouble=0;this.perfectClears=0;
+    this.gravityAcc=0;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    this.startTime=now();this.elapsed=0;this.eventText='';this.aiThought='';this.lastCandidates=[];this.aiControlled=false;
+    this.spawn();
+  }
+  spawn(type=null){
+    if(!type){
+      type=this.queue.shift();while(this.queue.length<7)this.queue.push(this.bag.next());
+    }
+    this.active={type,x:3,y:1,rot:0};
+    this.holdUsed=false;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    if(collides(this.board,this.active)){this.topOut();return false}
+    if(this.onSpawn)this.onSpawn(this);
+    return true;
+  }
+  topOut(){
+    if(this.gameOver)return;this.gameOver=true;this.finished=true;sfx.ko();
+    if(this.onTopOut)this.onTopOut(this);
+  }
+  gravityMs(){
+    if(this.mode==='sprint'||this.mode==='vs_cpu'||this.mode==='cpu_cpu')return 800;
+    const l=Math.max(1,this.level);
+    return Math.max(16,1000*Math.pow(0.8-((l-1)*0.007),l-1));
+  }
+  move(dx,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,x:this.active.x+dx};
+    if(collides(this.board,q))return false;
+    const wasGround=grounded(this.board,this.active);this.active=q;this.lastAction='move';
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.move();return true;
+  }
+  softDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,y:this.active.y+1};
+    if(collides(this.board,q))return false;
+    this.active=q;this.lastAction='down';if(!fromAI)this.score+=1;return true;
+  }
+  rotate(dir,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const wasGround=grounded(this.board,this.active);
+    const res=tryRotateOn(this.board,this.active,dir);if(!res)return false;
+    this.active=res.piece;this.lastAction='rotate';this.lastKickIndex=res.kickIndex;
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.rotate();return true;
+  }
+  hardDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    let d=0;while(this.softDrop(true))d++;
+    if(!fromAI)this.score+=d*2;
+    this.lastAction=this.lastAction==='rotate'?'rotate':'hard';
+    sfx.hard();this.lockPiece();return true;
+  }
+  doHold(){
+    if(this.gameOver||this.holdUsed||!this.active)return false;
+    const old=this.active.type;
+    if(this.hold===null){this.hold=old;this.active=null;this.spawn()}
+    else{const h=this.hold;this.hold=old;this.active=null;this.spawn(h)}
+    this.holdUsed=true;this.lastAction='hold';return true;
+  }
+  lockPiece(){
+    if(!this.active||this.gameOver)return;
+    const p={...this.active};
+    const tspin=detectTSpin(this.board,p,this.lastAction==='rotate',this.lastKickIndex);
+    for(const [x,y] of cellsOf(p)){
+      if(y<0){this.topOut();return}
+      this.board[y][x]=p.type;
+    }
+    this.pieces++;
+    const lines=clearCompletedLines(this.board);
+    const perfect=this.board.every(row=>row.every(v=>!v));
+    if(perfect)this.perfectClears++;
+    const difficult=lines===4||(tspin.type!=='none'&&lines>0);
+    const b2bBefore=this.b2b;
+    if(lines>0){this.combo++;this.maxCombo=Math.max(this.maxCombo,this.combo)}
+    else this.combo=-1;
+    if(difficult)this.b2b=true;else if(lines>0)this.b2b=false;
+    if(lines===4)this.tetrisCount++;
+    if(tspin.type!=='none'){this.tspinCount++;if(lines===2)this.tspinDouble++}
+    this.score+=scoreFor(lines,tspin.type,b2bBefore,this.combo,this.level,perfect);
+    this.lines+=lines;
+    if(this.mode==='marathon')this.level=1+Math.floor(this.lines/10);
+    let atk=attackFor(lines,tspin.type,b2bBefore,this.combo,perfect);
+    if(atk>0){
+      const cancelled=Math.min(atk,this.pendingGarbage);this.pendingGarbage-=cancelled;atk-=cancelled;
+      if(atk>0){this.attacks+=atk;if(this.onAttack)this.onAttack(this,atk)}
+    }
+    this.showClearEvent(lines,tspin.type,b2bBefore,perfect);
+    if(lines>0)sfx.clear(lines);if(tspin.type!=='none')sfx.tspin();
+    if(this.mode==='sprint'&&this.lines>=40){
+      this.finished=true;if(this.onFinish)this.onFinish(this,'sprint');return;
+    }
+    if(this.pendingGarbage>0){
+      const add=Math.min(8,this.pendingGarbage);this.pendingGarbage-=add;this.applyGarbage(add);
+      if(this.gameOver)return;
+    }
+    this.active=null;this.spawn();
+  }
+  showClearEvent(lines,tspin,b2bBefore,perfect){
+    let main='';
+    if(perfect)main='PERFECT CLEAR';
+    else if(tspin==='full')main=`T-SPIN${lines?` ${['','SINGLE','DOUBLE','TRIPLE'][lines]}`:''}`;
+    else if(tspin==='mini')main=`T-SPIN MINI${lines===1?' SINGLE':''}`;
+    else if(lines===4)main='TETRIS';
+    else if(lines>0)main=['','SINGLE','DOUBLE','TRIPLE'][lines];
+    if(!main)return;
+    const subs=[];if(b2bBefore&&(lines===4||(tspin!=='none'&&lines>0)))subs.push('BACK-TO-BACK');
+    if(this.combo>0)subs.push(`COMBO ${this.combo}`);
+    this.eventText=main+(subs.length?'\n'+subs.join(' · '):'');
+    if(this.onEvent)this.onEvent(this,main,subs.join(' · '));
+  }
+  receiveGarbage(n){this.pendingGarbage+=n;this.received+=n}
+  applyGarbage(n){
+    let hole=this.garbageRng.int(COLS);
+    for(let k=0;k<n;k++){
+      // Preserve the board-size invariant even when incoming garbage causes top-out.
+      // The old code shifted the top row first, then returned on top-out, leaving
+      // a 23-row board that later crashed boardFeatures().
+      const shifted=this.board[0];
+      if(shifted.some(Boolean)){this.topOut();return}
+      this.board.shift();
+      if(this.garbageRng.next()<.28)hole=this.garbageRng.int(COLS);
+      const row=Array(COLS).fill('G');row[hole]=null;this.board.push(row);
+    }
+    if(this.active){
+      while(collides(this.board,this.active)){this.active.y--;if(this.active.y<-4){this.topOut();return}}
+    }
+  }
+  update(dt){
+    if(this.gameOver||this.finished||!this.active)return;
+    this.elapsed+=dt;
+    if(this.aiControlled)return;
+    this.gravityAcc+=dt;
+    const g=this.gravityMs();
+    while(this.gravityAcc>=g){this.gravityAcc-=g;if(!this.softDrop(true))break}
+    if(grounded(this.board,this.active)){
+      this.lockAcc+=dt;if(this.lockAcc>=APP.settings.lockDelay)this.lockPiece();
+    }else this.lockAcc=0;
+  }
+  pps(){return this.elapsed>0?this.pieces/(this.elapsed/1000):0}
+  apm(){return this.elapsed>0?this.attacks/(this.elapsed/60000):0}
+}
+
+/* =========================================================
+   AI evaluation + reachable placement search
+========================================================= */
+
+function boardFeatures(board){
+  const heights=Array(COLS).fill(0),holeCounts=Array(COLS).fill(0);
+  let holes=0,holeDepth=0,covered=0,holeColumns=0;
+  for(let x=0;x<COLS;x++){
+    let seen=false,top=ROWS,colHoles=0;
+    for(let y=0;y<ROWS;y++){
+      if(board[y][x]){
+        if(!seen){seen=true;top=y}
+      }else if(seen){
+        holes++;colHoles++;holeCounts[x]++;holeDepth+=ROWS-y;
+        let blocksAbove=0;
+        for(let yy=top;yy<y;yy++)if(board[yy][x])blocksAbove++;
+        covered+=blocksAbove;
+      }
+    }
+    if(colHoles>0)holeColumns++;
+    heights[x]=seen?ROWS-top:0;
+  }
+  const aggregate=heights.reduce((a,b)=>a+b,0),maxHeight=Math.max(...heights),minHeight=Math.min(...heights);
+  let bump=0,wells=0,bestCleanWell=0,bestWellCol=-1;
+  for(let x=0;x<COLS-1;x++)bump+=Math.abs(heights[x]-heights[x+1]);
+  for(let x=0;x<COLS;x++){
+    const l=x===0?null:heights[x-1],r=x===COLS-1?null:heights[x+1];
+    const rim=l===null?r:r===null?l:Math.min(l,r);
+    const depth=Math.max(0,(rim??0)-heights[x]);
+    wells+=depth;
+    if(holeCounts[x]===0&&depth>bestCleanWell){bestCleanWell=depth;bestWellCol=x}
+  }
+  let rowTransitions=0,colTransitions=0;
+  for(let y=HIDDEN_ROWS;y<ROWS;y++){
+    let prev=1;
+    for(let x=0;x<COLS;x++){const cur=board[y][x]?1:0;if(cur!==prev)rowTransitions++;prev=cur}
+    if(prev===0)rowTransitions++;
+  }
+  for(let x=0;x<COLS;x++){
+    let prev=1;
+    for(let y=HIDDEN_ROWS;y<ROWS;y++){const cur=board[y][x]?1:0;if(cur!==prev)colTransitions++;prev=cur}
+    if(prev===0)colTransitions++;
+  }
+  return {
+    aggregate,maxHeight,minHeight,heights,holeCounts,holes,holeDepth,covered,holeColumns,
+    bump,wells,bestCleanWell,bestWellCol,rowTransitions,colTransitions
+  };
+}
+function countTSlots(board){
+  let n=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    const up=board[cy-1],mid=board[cy],down=board[cy+1];
+    for(let cx=1;cx<COLS-1;cx++){
+      if(mid[cx])continue;
+      const corners=(up[cx-1]?1:0)+(up[cx+1]?1:0)+(down[cx-1]?1:0)+(down[cx+1]?1:0);
+      if(corners>=3)n++;
+    }
+  }
+  return n;
+}
+
+function tSpinReadyGeometry(board){
+  let best=0,count=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    for(let cx=1;cx<COLS-1;cx++){
+      if(board[cy][cx])continue;
+      const tl=!!board[cy-1][cx-1],tr=!!board[cy-1][cx+1],
+            bl=!!board[cy+1][cx-1],br=!!board[cy+1][cx+1];
+      if((tl?1:0)+(tr?1:0)+(bl?1:0)+(br?1:0)<3)continue;
+      for(let rot=0;rot<4;rot++){
+        const p={type:'T',x:cx-1,y:cy-1,rot};
+        if(collides(board,p)||!grounded(board,p))continue;
+        const front=rot===0?(tl?1:0)+(tr?1:0):
+                    rot===1?(tr?1:0)+(br?1:0):
+                    rot===2?(bl?1:0)+(br?1:0):
+                            (tl?1:0)+(bl?1:0);
+        const pts=cellsOf(p);
+        let row1=pts[0][1],row2=null,row3=null;
+        for(let k=1;k<pts.length;k++){
+          const yy=pts[k][1];
+          if(yy!==row1&&row2===null)row2=yy;
+          else if(yy!==row1&&yy!==row2)row3=yy;
+        }
+        let lines=0;
+        for(const y of [row1,row2,row3]){
+          if(y===null||y<0||y>=ROWS)continue;
+          let full=true;
+          for(let x=0;x<COLS&&full;x++){
+            if(board[y][x])continue;
+            let byT=false;
+            for(let k=0;k<pts.length;k++)if(pts[k][0]===x&&pts[k][1]===y){byT=true;break}
+            if(!byT)full=false;
+          }
+          if(full)lines++;
+        }
+        if(lines<=0)continue;
+        count++;
+        const fullSpin=front===2;
+        const v=fullSpin?([0,1.25,4.2,6.8][Math.min(3,lines)]||0):.55;
+        if(v>best)best=v;
+      }
+    }
+  }
+  return {best,count};
+}
+function getTSpinReady(board,ctx={}){
+  const a=cachedBoardAnalysis(board,ctx);
+  if(a.tspinReady===undefined)a.tspinReady=tSpinReadyGeometry(board);
+  return a.tspinReady;
+}
+function tetrisReadyRows(board){
+  let best=0,bestCol=-1;
+  for(let x=0;x<COLS;x++){
+    let run=0,local=0;
+    for(let y=ROWS-1;y>=HIDDEN_ROWS;y--){
+      if(board[y][x]){run=0;continue}
+      let fullElse=true;
+      for(let cx=0;cx<COLS;cx++)if(cx!==x&&!board[y][cx]){fullElse=false;break}
+      if(fullElse){run++;if(run>local)local=run}else run=0;
+    }
+    if(local>best){best=local;bestCol=x}
+  }
+  return {rows:Math.min(4,best),col:bestCol};
+}
+function cachedBoardAnalysis(board,ctx={}){
+  const cache=ctx.analysisCache;
+  if(cache){
+    let v=cache.get(board);
+    if(v)return v;
+    v={features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+    cache.set(board,v);return v;
+  }
+  return {features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+}
+
+/*
+  AI v5 strategic overhaul
+  Style now MODIFIES a common competent baseline instead of replacing safety.
+  This is deliberate: "Aggressive" means attack harder, not forget how holes work.
+*/
+const AI_BASE={
+  height:-0.30,maxHeight:-0.68,holes:-8.0,holeDepth:-0.085,covered:-0.06,
+  bump:-0.25,wells:-0.035,rowTransitions:-0.105,colTransitions:-0.09,
+  lines:1.35,attack:3.55
+};
+const AI_STYLE={
+  balanced:{survival:1.00,attack:1.00,lines:1.00,tspin:1.00,setup:1.00,aggression:0.00},
+  aggressive:{survival:.98,attack:1.48,lines:.92,tspin:1.15,setup:1.02,aggression:1.00},
+  defensive:{survival:1.12,attack:.90,lines:1.08,tspin:.86,setup:.82,aggression:-.25},
+  tspin:{survival:1.04,attack:1.08,lines:.98,tspin:1.78,setup:1.42,aggression:.24}
+};
+
+/*
+  Level controls search quality and strategic knowledge.
+  Low levels still make mistakes; high levels gain lookahead/garbage/HOLD/tactical awareness.
+*/
+const AI_LEVEL_PROFILE={
+  1:{label:'BEGINNER',level:1,holdChance:0,depth:0,shortlist:5,beam:1,futureWeight:0,
+     attackFactor:.35,tspinFactor:0,setupFactor:0,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:0,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.78,
+     mistakeWeights:[.48,.29,.16,.07],mistakeWindow:12},
+  2:{label:'BASIC',level:2,holdChance:.55,depth:0,shortlist:6,beam:2,futureWeight:0,
+     attackFactor:.55,tspinFactor:.12,setupFactor:.06,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:.05,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.86,
+     mistakeWeights:[.72,.20,.08],mistakeWindow:8},
+  3:{label:'FOUNDATION',level:3,holdChance:1,depth:1,shortlist:7,beam:3,futureWeight:.44,
+     attackFactor:.76,tspinFactor:.38,setupFactor:.22,b2bAware:false,comboAware:false,
+     garbageAware:.05,opponentAware:0,tspinPlanning:.18,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.98,
+     mistakeWeights:[.95,.05],mistakeWindow:4.0},
+  4:{label:'LOOKAHEAD',level:4,holdChance:1,depth:1,shortlist:8,beam:4,futureWeight:.58,
+     attackFactor:.96,tspinFactor:.68,setupFactor:.42,b2bAware:true,comboAware:true,
+     garbageAware:.18,opponentAware:0,tspinPlanning:.35,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:1.8,b2bKeepBonus:.8,survival:1.00,
+     mistakeWeights:[.985,.015],mistakeWindow:2.2},
+  5:{label:'CHAIN BUILDER',level:5,holdChance:1,depth:2,shortlist:9,beam:4,futureWeight:.62,
+     attackFactor:1.00,tspinFactor:.82,setupFactor:.52,b2bAware:true,comboAware:true,
+     garbageAware:.45,opponentAware:.05,tspinPlanning:.58,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.4,b2bKeepBonus:1.2,survival:1.06,
+     mistakeWeights:null,mistakeWindow:0},
+  6:{label:'GARBAGE / HOLD',level:6,holdChance:1,depth:2,shortlist:10,beam:4,futureWeight:.67,
+     attackFactor:1.05,tspinFactor:.95,setupFactor:.68,b2bAware:true,comboAware:true,
+     garbageAware:1.0,opponentAware:.15,tspinPlanning:.78,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.8,b2bKeepBonus:1.5,survival:1.12,
+     mistakeWeights:null,mistakeWindow:0},
+  7:{label:'TACTICAL',level:7,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.71,
+     attackFactor:1.08,tspinFactor:1.08,setupFactor:.88,b2bAware:true,comboAware:true,
+     garbageAware:1.10,opponentAware:.28,tspinPlanning:1.05,tacticalT:true,tacticalReadiness:true,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:3.2,b2bKeepBonus:1.9,survival:1.16,
+     mistakeWeights:null,mistakeWindow:0},
+  8:{label:'VS TACTICS',level:8,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.72,
+     attackFactor:1.12,tspinFactor:1.16,setupFactor:1.00,b2bAware:true,comboAware:true,
+     garbageAware:1.25,opponentAware:1.0,tspinPlanning:1.22,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:3.6,b2bKeepBonus:2.2,survival:1.20,
+     mistakeWeights:null,mistakeWindow:0},
+  9:{label:'EXPERT',level:9,holdChance:1,depth:3,shortlist:10,beam:2,futureWeight:.74,
+     attackFactor:1.16,tspinFactor:1.24,setupFactor:1.12,b2bAware:true,comboAware:true,
+     garbageAware:1.38,opponentAware:1.45,tspinPlanning:1.38,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:4.0,b2bKeepBonus:2.5,survival:1.24,
+     mistakeWeights:null,mistakeWindow:0}
+};
+function getAIProfile(level){return AI_LEVEL_PROFILE[clamp(Math.round(+level||1),1,9)]}
+
+function simulateLock(board,p,lastWasRotate=false,lastKickIndex=0){
+  const b=deepBoard(board),t=detectTSpin(b,p,lastWasRotate,lastKickIndex);
+  for(const [x,y] of cellsOf(p)){if(y>=0&&y<ROWS&&x>=0&&x<COLS)b[y][x]=p.type}
+  const lines=clearCompletedLines(b);
+  return {board:b,lines,tspin:t.type,perfect:b.every(r=>r.every(v=>!v))};
+}
+function boardSignature(board){
+  let s='';
+  for(let y=0;y<ROWS;y++){
+    let mask=0;
+    for(let x=0;x<COLS;x++)if(board[y][x])mask|=(1<<x);
+    s+=mask.toString(36)+'.';
+  }
+  return s;
+}
+function chainAfter(ctx,result){
+  const difficult=result.lines===4||(result.tspin!=='none'&&result.lines>0);
+  const comboAfter=result.lines>0?(ctx.combo??-1)+1:-1;
+  let b2bAfter=!!ctx.b2b;
+  if(difficult)b2bAfter=true;
+  else if(result.lines>0)b2bAfter=false;
+  return {b2b:b2bAfter,combo:comboAfter,difficult};
+}
+function boardDanger(features){
+  const height=clamp((features.maxHeight-9)/11,0,1);
+  const holes=clamp(features.holes/10,0,1);
+  const rough=clamp(features.bump/32,0,1);
+  return clamp(height*.62+holes*.30+rough*.08,0,1);
+}
+function tSpinResultValue(result){
+  if(result.tspin==='none')return 0;
+  if(result.lines===0)return 0; // 0-line MINI is not an achievement.
+  if(result.tspin==='mini')return result.lines===1?.55:.25;
+  return [0,1.25,3.25,5.7][Math.min(3,result.lines)]||0;
+}
+function strategicShortlist(scored,limit,profile){
+  if(!profile.categoryBeam)return scored.slice(0,limit);
+  const out=[],seen=new Set();
+  const add=c=>{if(!c||seen.has(c))return;seen.add(c);out.push(c)};
+  const take=(arr,n=1)=>{for(let i=0;i<Math.min(n,arr.length)&&out.length<limit;i++)add(arr[i])};
+  take(scored,Math.max(3,Math.ceil(limit*.50)));
+  const by=(fn,desc=false)=>scored.slice().sort((a,b)=>desc?fn(b)-fn(a):fn(a)-fn(b));
+  take(by(c=>c.analysis.features.holes),1);
+  take(by(c=>c.analysis.features.maxHeight),1);
+  take(by(c=>c.analysis.attack,true),2);
+  take(by(c=>c.analysis.tetrisReady,true),1);
+  take(by(c=>c.analysis.setupScore,true),2);
+  take(by(c=>c.result.lines,true),1);
+  for(const c of scored){if(out.length>=limit)break;add(c)}
+  return out;
+}
+function aiEvaluate(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  const style=AI_STYLE[styleName]||AI_STYLE.balanced;
+  const beforeA=cachedBoardAnalysis(board,ctx),afterA=cachedBoardAnalysis(result.board,ctx);
+  const bf=beforeA.features,f=afterA.features;
+  const chain=chainAfter(ctx,result);
+  const actualAttack=attackFor(result.lines,result.tspin,!!ctx.b2b,chain.combo,result.perfect);
+  const perceivedAttack=attackFor(
+    result.lines,result.tspin,
+    profile.b2bAware?!!ctx.b2b:false,
+    profile.comboAware?chain.combo:0,
+    result.perfect
+  );
+  const incoming=Math.max(0,ctx.pendingGarbage||0);
+  const beforeDanger=boardDanger(bf),selfDanger=boardDanger(f);
+  const panic=(bf.maxHeight>=15||bf.holes>=7||incoming>=5);
+  const critical=(bf.maxHeight>=18||bf.holes>=11||incoming>=9);
+  const survivalScale=profile.survival*style.survival*(1+(panic?.55:0)+(critical?.70:0));
+  const newHoles=Math.max(0,f.holes-bf.holes),filledHoles=Math.max(0,bf.holes-f.holes);
+  const heightRise=Math.max(0,f.maxHeight-bf.maxHeight);
+  const heightDrop=Math.max(0,bf.maxHeight-f.maxHeight);
+
+  // Static board quality: counted strongly at root/leaf, not repeatedly at every future ply.
+  let staticScore=
+    f.aggregate*AI_BASE.height*survivalScale+
+    f.maxHeight*AI_BASE.maxHeight*survivalScale+
+    f.holes*AI_BASE.holes*survivalScale+
+    f.holeDepth*AI_BASE.holeDepth*survivalScale+
+    f.covered*AI_BASE.covered*survivalScale+
+    f.bump*AI_BASE.bump+f.wells*AI_BASE.wells+
+    f.rowTransitions*AI_BASE.rowTransitions+f.colTransitions*AI_BASE.colTransitions;
+
+  if(f.maxHeight>12)staticScore-=Math.pow(f.maxHeight-12,2)*.52*profile.survival*style.survival;
+  if(f.maxHeight>=17)staticScore-=Math.pow(f.maxHeight-16,2)*1.65*profile.survival*style.survival;
+  if(f.maxHeight>=20)staticScore-=18*profile.survival*style.survival;
+  if(f.holes>=8)staticScore-=Math.pow(f.holes-7,1.35)*1.15*profile.survival*style.survival;
+
+  let transitionScore=0;
+
+  // Damage / repair of the current move.
+  transitionScore-=newHoles*(4.9+1.9*profile.survival)*style.survival;
+  transitionScore+=filledHoles*(2.35+.75*profile.garbageAware);
+  transitionScore-=heightRise*(panic?2.6:.52)*style.survival;
+  transitionScore+=heightDrop*(panic?1.35:.28);
+
+  // Ordinary clears are useful under pressure. At low danger, zero-attack singles are "burns".
+  const clearScale=style.lines*(1+beforeDanger*1.05);
+  transitionScore+=result.lines*AI_BASE.lines*clearScale;
+  const skill=clamp((profile.level-2)/7,0,1);
+  if(result.lines===1&&actualAttack===0&&incoming===0&&filledHoles===0&&beforeDanger<.48){
+    transitionScore-=(.35+2.35*skill)*(styleName==='defensive'?.82:1);
+  }else if(result.lines===2&&actualAttack<=1&&incoming===0&&beforeDanger<.35){
+    transitionScore-=.25*skill;
+  }
+  if(result.lines===0&&bf.maxHeight>=12){
+    transitionScore-=(bf.maxHeight-11)*(.48+(panic?.60:0))*style.survival;
+  }
+
+  // Attack. Aggressive gets extra payoff only while healthy.
+  let attackScale=AI_BASE.attack*profile.attackFactor*style.attack;
+  if(style.aggression>0&&selfDanger<.58)attackScale*=1+style.aggression*.18;
+  if(selfDanger>.72)attackScale*=.70;
+  transitionScore+=perceivedAttack*attackScale;
+  if(actualAttack>=3&&selfDanger<.58){
+    transitionScore+=Math.pow(actualAttack-2,1.25)*.85*profile.attackFactor*style.attack;
+  }
+
+  // T-Spin: line-aware. A 0-line MINI receives no tactical reward.
+  const tsValue=tSpinResultValue(result);
+  transitionScore+=tsValue*4.6*profile.tspinFactor*style.tspin;
+
+  // Strategic setup is valuable only while the board is safe.
+  const queue=ctx.queue||[];
+  const tIndex=queue.indexOf('T'),iIndex=queue.indexOf('I');
+  const tNear=ctx.hold==='T'?1:(tIndex<0?.10:[1,.80,.57,.36,.22][Math.min(tIndex,4)]);
+  const iNear=ctx.hold==='I'?1:(iIndex<0?.12:[1,.84,.63,.43,.27][Math.min(iIndex,4)]);
+  const tAvailableSoon=ctx.hold==='T'||(tIndex>=0&&tIndex<=2);
+  const setupHeightGate=clamp((15-bf.maxHeight)/7,0,1);
+  const setupHoleGate=clamp((6-bf.holes)/6,0,1);
+  const setupSafety=(critical?0:panic?.06:clamp(1-selfDanger*.78,.20,1))*setupHeightGate*setupHoleGate;
+  const slotDelta=afterA.slots-beforeA.slots;
+  const tr=afterA.tetrisReady.rows;
+  const wellBefore=Math.min(4,bf.bestCleanWell||0),wellAfter=Math.min(4,f.bestCleanWell||0);
+  let setupScore=0;
+
+  // A clean common well is intentional structure, not generic roughness.
+  setupScore+=Math.max(0,wellAfter-wellBefore)*.90*iNear;
+  setupScore+=wellAfter*.30*iNear;
+  if(tr>0)setupScore+=tr*.90*iNear;
+  if(tr>=4)setupScore+=3.2*iNear;
+
+  // T slot preservation is modest unless a T is close.
+  let tspinReady=0;
+  if(profile.tacticalReadiness){
+    // A raw three-corner "slot" is only a weak hint. Real reward requires a line-clearing T-spin geometry.
+    setupScore+=Math.max(0,slotDelta)*.08*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.05;
+    if(setupSafety>.12&&tAvailableSoon&&(afterA.slots>0||beforeA.slots>0)){
+      const beforeReady=beforeA.slots>0?getTSpinReady(board,ctx).best:0;
+      const afterReady=afterA.slots>0?getTSpinReady(result.board,ctx).best:0;
+      tspinReady=afterReady;
+      setupScore+=(afterReady-beforeReady)*1.75+afterReady*.38;
+    }
+  }else{
+    setupScore+=Math.max(0,slotDelta)*.38*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.10;
+  }
+
+  // Don't burn a developed well for a harmless low-stack single.
+  if(result.lines===1&&actualAttack===0&&beforeDanger<.42&&wellBefore>=2&&wellAfter<wellBefore){
+    transitionScore-=(wellBefore-wellAfter)*1.15*skill;
+  }
+
+  transitionScore+=setupScore*profile.setupFactor*style.setup*setupSafety*profile.tspinPlanning;
+  if(styleName==='tspin'&&result.lines===0&&bf.maxHeight>=9&&tspinReady<=0&&tr<3){
+    transitionScore-=(bf.maxHeight-8)*.75;
+  }
+
+  // B2B / combo.
+  if(profile.b2bAware){
+    if(ctx.b2b&&result.lines>0&&!chain.difficult&&!panic)transitionScore-=profile.b2bBreakPenalty;
+    if(ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*(1+selfDanger*.25);
+    if(!ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*.35;
+  }
+  if(profile.comboAware){
+    if(ctx.combo>=1&&result.lines===0&&!panic)transitionScore-=Math.min(2.4,ctx.combo*.28);
+    if(chain.combo>=2&&result.lines>0)transitionScore+=Math.min(3.0,chain.combo*.27);
+  }
+
+  // Garbage handling.
+  if(profile.garbageAware>0&&incoming>0){
+    const cancelled=Math.min(incoming,actualAttack),remain=incoming-cancelled;
+    transitionScore+=cancelled*3.35*profile.garbageAware;
+    transitionScore-=remain*.32*profile.garbageAware;
+    if(remain>0&&f.maxHeight>10)transitionScore-=(f.maxHeight-10)*remain*.16*profile.garbageAware;
+    if(filledHoles>0)transitionScore+=filledHoles*.95*profile.garbageAware;
+  }
+
+  // Opponent pressure: finish only when self-board is healthy.
+  let oppDanger=0;
+  if(profile.opponentAware>0&&ctx.opponentFeatures){
+    oppDanger=boardDanger(ctx.opponentFeatures);
+    const oppPending=Math.max(0,ctx.opponentPending||0);
+    if(selfDanger<.65){
+      transitionScore+=actualAttack*oppDanger*3.35*profile.opponentAware;
+      transitionScore+=actualAttack*Math.min(12,oppPending)*.085*profile.opponentAware;
+      if(oppDanger>.72)transitionScore+=actualAttack*actualAttack*.32*profile.opponentAware;
+    }
+  }
+
+  const score=staticScore+transitionScore;
+  return {
+    score,staticScore,transitionScore,attack:actualAttack,perceivedAttack,features:f,
+    slots:afterA.slots,slotDelta,tetrisReady:tr,tspinReady,setupScore,
+    selfDanger,oppDanger,b2bAfter:chain.b2b,comboAfter:chain.combo,difficult:chain.difficult
+  };
+}
+function aiScore(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  return aiEvaluate(board,result,styleName,ctx,profile).score;
+}
+
+function createReachabilitySearch(board,start){
+  return {
+    board,
+    q:[{p:{...start},path:[],lastRotate:false,kickIndex:0}],
+    head:0,seen:new Set(),out:[],done:false
+  };
+}
+function stepReachabilitySearch(search,deadline=Infinity){
+  const {board,q,seen,out}=search;
+  const keyOf=(p,lr,ki=0)=>`${p.x},${p.y},${p.rot},${lr?1:0},${lr?ki:0}`;
+  while(search.head<q.length&&performance.now()<deadline){
+    const cur=q[search.head++],k=keyOf(cur.p,cur.lastRotate,cur.kickIndex);
+    if(seen.has(k))continue;seen.add(k);
+    if(cur.path.length>60)continue;
+    if(grounded(board,cur.p))out.push(cur);
+    const moves=[
+      ['left',()=>({piece:{...cur.p,x:cur.p.x-1},kickIndex:0})],
+      ['right',()=>({piece:{...cur.p,x:cur.p.x+1},kickIndex:0})],
+      ['down',()=>({piece:{...cur.p,y:cur.p.y+1},kickIndex:0})],
+      ['cw',()=>{const r=tryRotateOn(board,cur.p,1);return r?{piece:r.piece,kickIndex:r.kickIndex}:null}],
+      ['ccw',()=>{const r=tryRotateOn(board,cur.p,-1);return r?{piece:r.piece,kickIndex:r.kickIndex}:null}]
+    ];
+    for(const [a,fn] of moves){
+      const r=fn();if(!r||collides(board,r.piece))continue;
+      q.push({p:r.piece,path:cur.path.concat(a),lastRotate:a==='cw'||a==='ccw',kickIndex:r.kickIndex||0});
+    }
+  }
+  if(search.head>=q.length)search.done=true;
+  return search.done;
+}
+function finishReachabilitySearch(search){
+  const unique=new Map();
+  for(const c of search.out){
+    const k=`${c.p.x},${c.p.y},${c.p.rot},${c.lastRotate?1:0}`;
+    const prev=unique.get(k);if(!prev||c.path.length<prev.path.length)unique.set(k,c);
+  }
+  return [...unique.values()];
+}
+function reachablePlacements(board,start){
+  const search=createReachabilitySearch(board,start);
+  while(!search.done)stepReachabilitySearch(search,Infinity);
+  return finishReachabilitySearch(search);
+}
+function fastDropPlacements(board,type){
+  const out=[],seen=new Set();
+  for(let r=0;r<4;r++)for(let x=-2;x<COLS+2;x++){
+    let p={type,x,y:0,rot:r};if(collides(board,p))continue;p=dropY(board,p);
+    if(collides(board,p))continue;
+    const sig=cellsOf(p).map(([cx,cy])=>`${cx},${cy}`).sort().join('|');
+    if(seen.has(sig))continue;seen.add(sig);
+    out.push({p,path:[],lastRotate:false,kickIndex:0});
+  }
+  return out;
+}
+
+function tacticalTPlacements(board){
+  /*
+    Cheap future-T tactical search.
+    Full reachablePlacements() is used for the CURRENT piece. For a future T,
+    this explores hard-drop approaches plus a final SRS rotation from 0-2 cells
+    above the resting point. It catches the common T-Spin tuck/kick patterns
+    without running another full BFS inside every beam-search branch.
+  */
+  const out=[],seen=new Set();
+  const add=(p,lastRotate=false,kickIndex=0)=>{
+    if(!p||collides(board,p)||!grounded(board,p))return;
+    const sig=cellsOf(p).map(([x,y])=>`${x},${y}`).sort().join('|')+`/${lastRotate?1:0}/${lastRotate?kickIndex:0}`;
+    if(seen.has(sig))return;seen.add(sig);
+    out.push({p,path:[],lastRotate,kickIndex});
+  };
+  for(let rot=0;rot<4;rot++)for(let x=-2;x<COLS+2;x++){
+    let base={type:'T',x,y:0,rot};
+    if(collides(board,base))continue;
+    base=dropY(board,base);
+    add(base,false,0);
+    for(let lift=0;lift<=2;lift++){
+      const pre={...base,y:base.y-lift};
+      if(collides(board,pre))continue;
+      for(const dir of [-1,1]){
+        const r=tryRotateOn(board,pre,dir);
+        if(r)add(r.piece,true,r.kickIndex||0);
+      }
+    }
+  }
+  return out;
+}
+class TetrisAI{
+  constructor(game,{level=5,pps=1.35,style='balanced',seed=1}={}){
+    this.game=game;this.game.aiControlled=true;
+    this.level=clamp(Math.round(+level||5),1,9);this.profile=getAIProfile(this.level);
+    this.pps=clamp(+pps||1.35,.2,6);this.style=style;
+    this.rng=new PRNG((seed^0xA531)>>>0);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.pieceClock=0;this.placeAt=0;this.actionDelay=20;this.lastPieceCount=-1;
+
+    this.planning=false;this.planningPhase='idle';this.planDepth=0;this.planSerial=0;
+    this.scenarios=[];this.scenarioIndex=0;this.rootSearch=null;
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];this.shortlistAccum=[];
+    this.planWork=[];this.planWorkIndex=0;this.futureCache=new Map();this.analysisCache=new WeakMap();
+  }
+  onSpawn(){
+    this.pieceClock=0;
+    // Intelligence and placement speed are intentionally independent.
+    this.placeAt=(1000/this.pps)*this.rng.range(.88,1.12);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.lastPieceCount=this.game.pieces;
+    this.beginPlan();
+  }
+  context(queue=this.game.queue){
+    const g=this.game,o=g.opponent&&!g.opponent.gameOver?g.opponent:null;
+    return {
+      b2b:g.b2b,combo:g.combo,pendingGarbage:g.pendingGarbage,queue:queue.slice(),hold:g.hold,
+      opponentFeatures:o?boardFeatures(o.board):null,opponentPending:o?o.pendingGarbage:0,
+      analysisCache:this.analysisCache
+    };
+  }
+  candidateSetFor(type,board=this.game.board,start=null,ctx=this.context()){
+    // Synchronous helper retained for tests/debug. Normal gameplay uses the incremental root search.
+    const s=start||{type,x:3,y:1,rot:0};
+    const arr=reachablePlacements(board,s);
+    return arr.map(c=>{
+      const result=simulateLock(board,c.p,c.lastRotate,c.kickIndex);
+      const analysis=aiEvaluate(board,result,this.style,ctx,this.profile);
+      return {...c,result,analysis,score:analysis.score};
+    });
+  }
+
+  nextContext(ctx,result,nextQueue,holdOverride=ctx.hold){
+    const chain=chainAfter(ctx,result);
+    return {...ctx,b2b:chain.b2b,combo:chain.combo,hold:holdOverride,pendingGarbage:0,queue:nextQueue.slice()};
+  }
+  futurePlacements(board,type,depth){
+    // High levels must keep SRS/T-spin legality even when T is 2-3 plies away.
+    if(this.profile.tacticalT&&type==='T')return tacticalTPlacements(board);
+    return fastDropPlacements(board,type);
+  }
+  futureActions(queue,ctx){
+    if(!queue.length)return [];
+    const cur=queue[0],out=[{type:cur,nextQueue:queue.slice(1),holdAfter:ctx.hold,usedHold:false}];
+    if(!this.profile.futureHold)return out;
+    const strategic=t=>t==='I'||t==='T';
+    if(ctx.hold){
+      if(strategic(ctx.hold)||strategic(cur)){
+        out.push({type:ctx.hold,nextQueue:queue.slice(1),holdAfter:cur,usedHold:true});
+      }
+    }else if(queue.length>=2&&(strategic(cur)||strategic(queue[1]))){
+      out.push({type:queue[1],nextQueue:queue.slice(2),holdAfter:cur,usedHold:true});
+    }
+    return out;
+  }
+  futureValue(board,queue,depth,ctx){
+    if(depth<=0||queue.length===0)return 0;
+    const cacheKey=`${depth}|${queue.slice(0,depth+1).join('')}|H:${ctx.hold||'-'}|${ctx.b2b?1:0}|${ctx.combo}|${boardSignature(board)}`;
+    const cached=this.futureCache.get(cacheKey);if(cached!==undefined)return cached;
+    let scored=[];
+    for(const action of this.futureActions(queue,ctx)){
+      const cand=this.futurePlacements(board,action.type,depth);
+      for(const c of cand){
+        const result=simulateLock(board,c.p,!!c.lastRotate,c.kickIndex||0);
+        const localCtx={...ctx,hold:action.holdAfter,queue:action.nextQueue.slice()};
+        const analysis=aiEvaluate(board,result,this.style,localCtx,this.profile);
+        scored.push({
+          result,analysis,score:analysis.score-(action.usedHold?.02:0),
+          nextQueue:action.nextQueue,holdAfter:action.holdAfter
+        });
+      }
+    }
+    if(!scored.length){this.futureCache.set(cacheKey,-999);return -999}
+    scored.sort((a,b)=>b.score-a.score);
+    scored=scored.slice(0,this.profile.beam);
+    let best=-Infinity;
+    for(const c of scored){
+      let v=c.analysis.transitionScore+(depth<=1?c.analysis.staticScore:0);
+      if(depth>1){
+        const nctx=this.nextContext(ctx,c.result,c.nextQueue,c.holdAfter);
+        v+=this.profile.futureWeight*this.futureValue(c.result.board,c.nextQueue,depth-1,nctx);
+      }
+      if(v>best)best=v;
+    }
+    this.futureCache.set(cacheKey,best);return best;
+  }
+  shouldConsiderHold(){
+    if(this.game.holdUsed||this.profile.holdChance<=0)return false;
+    if(this.profile.holdChance>=1)return true;
+    return this.rng.next()<this.profile.holdChance;
+  }
+  buildScenarios(){
+    const g=this.game,normalQueue=g.queue.slice();
+    const scenarios=[{hold:false,type:g.active.type,start:{...g.active},futureQueue:normalQueue,ctx:this.context(normalQueue)}];
+    if(this.shouldConsiderHold()){
+      const alt=g.hold!==null?g.hold:g.queue[0];
+      const futureQueue=g.hold===null?g.queue.slice(1):g.queue.slice();
+      scenarios.push({
+        hold:true,type:alt,start:{type:alt,x:3,y:1,rot:0},futureQueue,
+        ctx:{...this.context(futureQueue),hold:g.active.type}
+      });
+    }
+    return scenarios;
+  }
+  startScenarioSearch(){
+    if(this.scenarioIndex>=this.scenarios.length){
+      this.finishRootGeneration();return;
+    }
+    const sc=this.scenarios[this.scenarioIndex];
+    this.rootSearch=createReachabilitySearch(this.game.board,sc.start);
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];
+    this.planningPhase='root-search';
+  }
+  finishRootGeneration(){
+    this.planWork=this.shortlistAccum.sort((a,b)=>b.baseScore-a.baseScore);
+    this.planWorkIndex=0;this.planDepth=this.profile.depth;
+    if(!this.planWork.length){this.finishPlan();return}
+    if(this.planDepth===0){
+      for(const c of this.planWork)c.score=c.baseScore-(c.hold?.05:0);
+      this.planWorkIndex=this.planWork.length;this.finishPlan();return;
+    }
+    this.planningPhase='future';
+  }
+  beginPlan(){
+    const g=this.game;if(!g.active){this.planning=false;this.planningPhase='idle';return}
+    this.planSerial++;this.futureCache.clear();this.analysisCache=new WeakMap();
+    this.scenarios=this.buildScenarios();this.scenarioIndex=0;
+    this.shortlistAccum=[];this.planWork=[];this.planWorkIndex=0;
+    this.planning=true;this.startScenarioSearch();
+  }
+  processPlanning(budgetMs=1.8){
+    if(!this.planning)return;
+    const deadline=performance.now()+Math.max(.25,budgetMs);
+
+    while(this.planning&&performance.now()<deadline){
+      if(this.planningPhase==='root-search'){
+        stepReachabilitySearch(this.rootSearch,deadline);
+        if(!this.rootSearch.done)return;
+        this.rootPlacements=finishReachabilitySearch(this.rootSearch);
+        this.rootScoreIndex=0;this.rootScored=[];
+        this.planningPhase='root-score';
+        continue;
+      }
+
+      if(this.planningPhase==='root-score'){
+        const sc=this.scenarios[this.scenarioIndex];
+        while(this.rootScoreIndex<this.rootPlacements.length&&performance.now()<deadline){
+          const c=this.rootPlacements[this.rootScoreIndex++];
+          const result=simulateLock(this.game.board,c.p,c.lastRotate,c.kickIndex);
+          const analysis=aiEvaluate(this.game.board,result,this.style,sc.ctx,this.profile);
+          this.rootScored.push({...c,result,analysis,score:analysis.score});
+        }
+        if(this.rootScoreIndex<this.rootPlacements.length)return;
+
+        this.rootScored.sort((a,b)=>b.score-a.score);
+        for(const c of strategicShortlist(this.rootScored,this.profile.shortlist,this.profile)){
+          this.shortlistAccum.push({
+            ...c,hold:sc.hold,type:sc.type,futureQueue:sc.futureQueue,
+            baseScore:c.score,score:c.score,ctx:sc.ctx
+          });
+        }
+        this.scenarioIndex++;
+        if(this.scenarioIndex<this.scenarios.length){
+          this.startScenarioSearch();continue;
+        }
+        this.finishRootGeneration();
+        continue;
+      }
+
+      if(this.planningPhase==='future'){
+        if(this.planWorkIndex>=this.planWork.length){this.finishPlan();return}
+        const c=this.planWork[this.planWorkIndex++];
+        const rootStaticWeight=this.profile.level<=3?.78:this.profile.level<=4?.66:this.profile.level<=6?.52:.40;
+        let score=c.analysis.transitionScore+c.analysis.staticScore*rootStaticWeight;
+        const nctx=this.nextContext(c.ctx,c.result,c.futureQueue);
+        score+=this.profile.futureWeight*this.futureValue(
+          c.result.board,c.futureQueue,this.planDepth,nctx
+        );
+        if(c.hold)score-=.05;
+        c.score=score;
+        continue;
+      }
+
+      return;
+    }
+  }
+  pickIndex(all){
+    const weights=this.profile.mistakeWeights;
+    if(!weights||all.length<2)return 0;
+    const best=all[0].score;
+    const eligible=all.filter(c=>c.score>=best-this.profile.mistakeWindow).slice(0,weights.length);
+    if(eligible.length<=1)return 0;
+    const w=weights.slice(0,eligible.length),sum=w.reduce((a,b)=>a+b,0);
+    let r=this.rng.next()*sum;
+    for(let i=0;i<w.length;i++){r-=w[i];if(r<=0)return i}
+    return 0;
+  }
+  finishPlan(){
+    const g=this.game,all=this.planWork||[];
+    all.sort((a,b)=>b.score-a.score);
+    g.lastCandidates=all.slice(0,10);
+    if(!all.length){
+      this.plan=null;this.planning=false;this.planningPhase='idle';return;
+    }
+    const idx=this.pickIndex(all),pick=all[Math.min(idx,all.length-1)];
+    this.plan={
+      hold:pick.hold,path:pick.path,target:pick.p,score:pick.score,
+      result:pick.result,analysis:pick.analysis,rank:idx+1,type:pick.type
+    };
+    this.planning=false;this.planningPhase='idle';this.actionIndex=0;this.actionAcc=0;
+    const steps=Math.max(1,this.plan?.path?.length||1);
+    this.actionDelay=clamp((this.placeAt*.72)/steps,8,50);
+    g.aiThought=this.describe(this.plan);
+  }
+  describe(p){
+    const a=p.analysis||aiEvaluate(this.game.board,p.result,this.style,this.context(),this.profile);
+    const tag=p.result.tspin!=='none'?` / ${p.result.tspin==='full'?'T-SPIN':'MINI'}`:'';
+    const vs=this.profile.opponentAware>0?` / opp ${(a.oppDanger*100).toFixed(0)}%`:'';
+    return `Lv.${this.level} ${this.profile.label}\n目標: ${p.type} x=${p.target.x} r=${p.target.rot}${tag}\n評価 ${p.score.toFixed(2)} / ATK ${a.attack} / holes ${a.features.holes} / H ${a.features.maxHeight}\nTetrisReady ${a.tetrisReady||0} / TSpinReady ${(a.tspinReady||0).toFixed(1)} / danger ${(a.selfDanger*100).toFixed(0)}%${vs}`;
+  }
+  update(dt){
+    const g=this.game;if(g.gameOver||g.finished||!g.active)return;
+    if(this.lastPieceCount!==g.pieces)this.onSpawn();
+    this.pieceClock+=dt;
+    if(this.planning){
+      // Search, root scoring, and future lookahead are all time-sliced.
+      const budget=APP.mode==='cpu_cpu'?1.10:1.55;
+      this.processPlanning(budget);
+      if(this.planning)return;
+    }
+    if(!this.plan){this.beginPlan();if(this.planning||!this.plan)return}
+    this.actionAcc+=dt;
+    if(this.plan.hold){
+      if(this.actionAcc>=Math.min(55,this.actionDelay)){
+        APP.dispatch(g,'hold',true,true);this.plan.hold=false;this.actionAcc=0;
+      }else return;
+    }
+    while(this.actionIndex<this.plan.path.length){
+      if(this.actionAcc<this.actionDelay)break;
+      this.actionAcc-=this.actionDelay;
+      const a=this.plan.path[this.actionIndex++];
+      APP.dispatch(g,a,true,true);
+    }
+    if(this.actionIndex>=this.plan.path.length&&this.pieceClock>=this.placeAt){
+      APP.dispatch(g,'hard',true,true);this.plan=null;
+      if(!g.gameOver&&!g.finished)this.onSpawn();
+    }
+  }
+}
+
+/* =========================================================
+   Replay recorder
+========================================================= */
+class ReplayRecorder{
+  constructor(){this.active=false;this.events=[];this.meta=null}
+  start(meta){this.active=true;this.events=[];this.meta=JSON.parse(JSON.stringify(meta))}
+  add(side,action,t){if(this.active)this.events.push({t:Math.round(t),side,action})}
+  stop(){this.active=false;const data={version:1,meta:this.meta,events:this.events};localStorage.setItem('tetris_ai_last_replay',JSON.stringify(data));return data}
+  export(){
+    const raw=localStorage.getItem('tetris_ai_last_replay');if(!raw)return;
+    const blob=new Blob([raw],{type:'application/json'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='tetris_ai_replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+  }
+}
+
+/* =========================================================
+   Rendering
+========================================================= */
+const SHADE_CACHE=new Map();
+function shade(hex,amt){
+  const k=`${hex}:${amt}`;if(SHADE_CACHE.has(k))return SHADE_CACHE.get(k);
+  const n=parseInt(hex.slice(1),16),r=clamp((n>>16)+amt,0,255),g=clamp(((n>>8)&255)+amt,0,255),b=clamp((n&255)+amt,0,255);
+  const v=`rgb(${r},${g},${b})`;SHADE_CACHE.set(k,v);return v;
+}
+function canvasCtx(canvas,w,h){
+  if(canvas.width!==w)canvas.width=w;
+  if(canvas.height!==h)canvas.height=h;
+  return canvas._ctx||(canvas._ctx=canvas.getContext('2d'));
+}
+function drawCell(ctx,x,y,size,color,alpha=1){
+  ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.fillRect(x+1,y+1,size-2,size-2);
+  ctx.fillStyle=shade(color,24);ctx.fillRect(x+2,y+2,size-4,3);
+  ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(x+size-4,y+3,2,size-6);ctx.restore();
+}
+function drawBoard(game,canvas){
+  const w=280,h=560,cell=w/COLS,ctx=canvasCtx(canvas,w,h);
+  ctx.clearRect(0,0,w,h);ctx.fillStyle='#080a0e';ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#1e232b';ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*cell,0);ctx.lineTo(x*cell,h);ctx.stroke()}
+  for(let y=0;y<=VISIBLE_ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*cell);ctx.lineTo(w,y*cell);ctx.stroke()}
+  for(let y=HIDDEN_ROWS;y<ROWS;y++)for(let x=0;x<COLS;x++){
+    const v=game.board[y][x];if(v)drawCell(ctx,x*cell,(y-HIDDEN_ROWS)*cell,cell,COLORS[v]);
+  }
+  if(game.active&&!game.gameOver){
+    if(APP.settings.ghost){
+      const ghost=dropY(game.board,game.active);
+      for(const [x,y] of cellsOf(ghost))if(y>=HIDDEN_ROWS)drawCell(ctx,x*cell,(y-HIDDEN_ROWS)*cell,cell,COLORS[ghost.type],.20);
+    }
+    for(const [x,y] of cellsOf(game.active))if(y>=HIDDEN_ROWS)drawCell(ctx,x*cell,(y-HIDDEN_ROWS)*cell,cell,COLORS[game.active.type]);
+  }
+}
+function drawMini(type,canvas){
+  const sig=type||'-';if(canvas._drawSig===sig)return;canvas._drawSig=sig;
+  const ctx=canvasCtx(canvas,188,124);ctx.clearRect(0,0,188,124);ctx.fillStyle='#0a0c10';ctx.fillRect(0,0,188,124);
+  if(!type)return;const pts=SHAPES[type][0],s=30;
+  const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+  const ox=(188-(maxx-minx+1)*s)/2-minx*s,oy=(124-(maxy-miny+1)*s)/2-miny*s;
+  for(const [x,y] of pts)drawCell(ctx,ox+x*s,oy+y*s,s,COLORS[type]);
+}
+function drawNext(queue,canvas){
+  const types=queue.slice(0,5),sig=types.join('');
+  if(canvas._drawSig===sig)return;canvas._drawSig=sig;
+  const ctx=canvasCtx(canvas,188,492);ctx.clearRect(0,0,188,492);ctx.fillStyle='#0a0c10';ctx.fillRect(0,0,188,492);
+  types.forEach((type,i)=>{
+    const pts=SHAPES[type][0],s=22,baseY=i*96+6,xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+    const minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+    const ox=(188-(maxx-minx+1)*s)/2-minx*s,oy=baseY+(82-(maxy-miny+1)*s)/2-miny*s;
+    for(const [x,y] of pts)drawCell(ctx,ox+x*s,oy+y*s,s,COLORS[type]);
+    if(i<4){ctx.strokeStyle='#1d222a';ctx.beginPath();ctx.moveTo(15,(i+1)*96);ctx.lineTo(173,(i+1)*96);ctx.stroke()}
+  });
+}
+
+/* =========================================================
+   DOM player panels
+========================================================= */
+function playerTemplate(id,name,cpu=false){
+  return `<section class="player-card" id="card-${id}">
+    <div class="player-head"><div class="player-name">${name}</div><div class="player-badges">
+      <span class="badge" id="badge-${id}-role">${cpu?'CPU':'PLAYER'}</span>
+      <span class="badge" id="badge-${id}-b2b">B2B OFF</span>
+    </div></div>
+    <div class="player-layout">
+      <div class="sidecol">
+        <div class="box"><div class="box-title">HOLD</div><canvas class="mini-canvas" id="hold-${id}"></canvas></div>
+        <div class="box"><div class="box-title">STATS</div><div class="stat-list">
+          <div class="stat-row"><span class="stat-k">SCORE</span><span class="stat-v" id="score-${id}">0</span></div>
+          <div class="stat-row"><span class="stat-k">LINES</span><span class="stat-v" id="lines-${id}">0</span></div>
+          <div class="stat-row"><span class="stat-k">LEVEL</span><span class="stat-v" id="level-${id}">1</span></div>
+          <div class="stat-row"><span class="stat-k">PPS</span><span class="stat-v" id="pps-${id}">0.00</span></div>
+          <div class="stat-row"><span class="stat-k">APM</span><span class="stat-v" id="apm-${id}">0.0</span></div>
+          <div class="stat-row"><span class="stat-k">COMBO</span><span class="stat-v" id="combo-${id}">-</span></div>
+        </div></div>
+        <div class="box"><div class="box-title">GARBAGE</div><div class="garbage-meter"><div class="garbage-fill" id="garbage-${id}"></div></div></div>
+      </div>
+      <div class="board-wrap">
+        <canvas class="board-canvas" id="board-${id}"></canvas>
+        <div class="event-pop" id="event-${id}"><div class="main"></div><div class="sub"></div></div>
+        <div class="board-overlay hidden" id="overlay-${id}"></div>
+      </div>
+      <div class="sidecol">
+        <div class="box"><div class="box-title">NEXT</div><canvas class="next-canvas" id="next-${id}"></canvas></div>
+        <div class="box"><div class="box-title">AI / STATUS</div><div class="ai-thought" id="thought-${id}">${cpu?'思考待機中':'READY'}</div></div>
+      </div>
+    </div>
+  </section>`;
+}
+function setTextIfChanged(el,value){
+  const s=String(value);if(el.textContent!==s)el.textContent=s;
+}
+function updatePanel(id,g,refreshRates=true){
+  drawBoard(g,document.getElementById(`board-${id}`));
+  drawMini(g.hold,document.getElementById(`hold-${id}`));
+  drawNext(g.queue,document.getElementById(`next-${id}`));
+  setTextIfChanged(document.getElementById(`score-${id}`),g.score.toLocaleString());
+  setTextIfChanged(document.getElementById(`lines-${id}`),g.lines);
+  setTextIfChanged(document.getElementById(`level-${id}`),g.level);
+  if(refreshRates){
+    setTextIfChanged(document.getElementById(`pps-${id}`),g.pps().toFixed(2));
+    setTextIfChanged(document.getElementById(`apm-${id}`),g.apm().toFixed(1));
+  }
+  setTextIfChanged(document.getElementById(`combo-${id}`),g.combo>0?g.combo:'-');
+  setTextIfChanged(document.getElementById(`badge-${id}-b2b`),g.b2b?'B2B ON':'B2B OFF');
+  const gf=document.getElementById(`garbage-${id}`),gh=`${Math.min(100,g.pendingGarbage/20*100)}%`;
+  if(gf.style.height!==gh)gf.style.height=gh;
+  setTextIfChanged(document.getElementById(`thought-${id}`),g.aiThought||'');
+  const ov=document.getElementById(`overlay-${id}`);
+  if(g.gameOver){setTextIfChanged(ov,'TOP OUT');ov.classList.remove('hidden')}else ov.classList.add('hidden');
+}
+function popEvent(id,main,sub){
+  const e=document.getElementById(`event-${id}`);e.querySelector('.main').textContent=main;e.querySelector('.sub').textContent=sub;
+  e.classList.remove('show');void e.offsetWidth;e.classList.add('show');
+}
+
+/* =========================================================
+   Input manager
+========================================================= */
+class InputManager{
+  constructor(){this.held={left:false,right:false,down:false};this.t={left:0,right:0,down:0};this.lastHorizontal=null;this.bind()}
+  bind(){
+    addEventListener('keydown',e=>{
+      if(APP.modalOpen())return;
+      const k=e.key;
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(k))e.preventDefault();
+      if(k==='p'||k==='P'||k==='Escape'){APP.togglePause();return}
+      if(!APP.humanGame||APP.paused||APP.replayMode)return;
+      if((k==='a'||k==='A')&&!this.held.left){this.held.left=true;this.t.left=0;this.lastHorizontal='left';APP.actionHuman('left')}
+      if((k==='d'||k==='D')&&!this.held.right){this.held.right=true;this.t.right=0;this.lastHorizontal='right';APP.actionHuman('right')}
+      if(k==='ArrowDown'&&!this.held.down){this.held.down=true;this.t.down=0;APP.actionHuman('down')}
+      if(k==='ArrowLeft'&&!e.repeat)APP.actionHuman('ccw');
+      if(k==='ArrowRight'&&!e.repeat)APP.actionHuman('cw');
+      if(k==='ArrowUp'&&!e.repeat)APP.actionHuman('hard');
+      if((k==='c'||k==='C')&&!e.repeat)APP.actionHuman('hold');
+    });
+    addEventListener('keyup',e=>{
+      const k=e.key;if(k==='a'||k==='A')this.held.left=false;if(k==='d'||k==='D')this.held.right=false;if(k==='ArrowDown')this.held.down=false;
+    });
+  }
+  update(dt){
+    if(!APP.humanGame||APP.paused||APP.replayMode)return;
+    for(const dir of ['left','right']){
+      if(!this.held[dir])continue;this.t[dir]+=dt;
+      if(this.t[dir]>=APP.settings.das){
+        if(APP.settings.arr===0){while(APP.actionHuman(dir,false));this.t[dir]=APP.settings.das}
+        else if(this.t[dir]>=APP.settings.das+APP.settings.arr){APP.actionHuman(dir,false);this.t[dir]-=APP.settings.arr}
+      }
+    }
+    if(this.held.down){this.t.down+=dt;if(this.t.down>=APP.settings.softDrop){APP.actionHuman('down',false);this.t.down-=APP.settings.softDrop}}
+  }
+}
+
+/* =========================================================
+   Main application coordinator
+========================================================= */
+const APP={
+  mode:'marathon',seed:1,games:[],ais:[],humanGame:null,paused:true,speed:1,lastTime:now(),matchClock:0,
+  recorder:new ReplayRecorder(),replayMode:false,replayData:null,replayIndex:0,replayClock:0,
+  stepTarget:null,debug:false,uiStatsAcc:0,
+  settings:{das:120,arr:18,lockDelay:500,softDrop:22,sound:true,ghost:true},
+  modalOpen(){return !document.getElementById('menu-modal').classList.contains('hidden')||!document.getElementById('settings-modal').classList.contains('hidden')||!document.getElementById('result-modal').classList.contains('hidden')},
+  newSeed(){return (Date.now()^Math.floor(Math.random()*0xffffffff))>>>0},
+  setupPanels(){
+    const grid=document.getElementById('arena-grid'),dual=this.mode==='vs_cpu'||this.mode==='cpu_cpu';
+    grid.className='arena-grid'+(dual?' dual':'');
+    if(this.mode==='cpu_cpu')grid.innerHTML=playerTemplate('p1','CPU A',true)+playerTemplate('p2','CPU B',true);
+    else if(this.mode==='vs_cpu')grid.innerHTML=playerTemplate('p1','YOU',false)+playerTemplate('p2','CPU',true);
+    else grid.innerHTML=playerTemplate('p1','YOU',false);
+  },
+  start(config={},replay=null){
+    this.mode=config.mode||this.mode;this.seed=(config.seed??this.newSeed())>>>0;this.speed=1;this.paused=false;this.stepTarget=null;this.matchClock=0;this.uiStatsAcc=0;
+    this.replayMode=!!replay;this.replayData=replay;this.replayIndex=0;this.replayClock=0;
+    this.setupPanels();this.games=[];this.ais=[];this.humanGame=null;
+    document.getElementById('hud-mode').textContent=MODE_LABEL[this.mode];document.getElementById('hud-seed').textContent=this.seed;
+    document.getElementById('speed-select').value='1';
+    const make=(id,name,seed)=>new TetrisGame({
+      id,name,mode:this.mode,seed,
+      onAttack:(g,n)=>this.routeAttack(g,n),onTopOut:g=>this.checkEnd(g),onFinish:(g,why)=>this.checkEnd(g,why),
+      onEvent:(g,m,s)=>popEvent(g.id,m,s)
+    });
+    if(this.mode==='marathon'||this.mode==='sprint'){
+      const g=make('p1','YOU',this.seed);this.games=[g];if(!replay)this.humanGame=g;
+    }else if(this.mode==='vs_cpu'){
+      const g1=make('p1','YOU',this.seed),g2=make('p2','CPU',(this.seed)>>>0);this.games=[g1,g2];g1.opponent=g2;g2.opponent=g1;if(!replay)this.humanGame=g1;
+      if(!replay){
+        const ai=new TetrisAI(g2,{level:config.aiLevel||5,pps:config.aiPps||1.35,style:config.aiStyle||'balanced',seed:this.seed+17});
+        this.ais=[ai];const rb=document.getElementById('badge-p2-role');if(rb)rb.textContent=`CPU Lv.${ai.level}`;ai.onSpawn();
+      }else g2.aiControlled=true;
+    }else{
+      const g1=make('p1','CPU A',this.seed),g2=make('p2','CPU B',this.seed);this.games=[g1,g2];g1.opponent=g2;g2.opponent=g1;
+      if(!replay){
+        const a1=new TetrisAI(g1,{level:+(config.aiLevel||5),pps:+(config.aiPps||1.35),style:config.aiStyle||'balanced',seed:this.seed+11});
+        const a2=new TetrisAI(g2,{level:+(config.aiLevelB||config.aiLevel||5),pps:+(config.aiPpsB||config.aiPps||1.35),style:config.aiStyleB||'aggressive',seed:this.seed+29});
+        this.ais=[a1,a2];
+        const r1=document.getElementById('badge-p1-role'),r2=document.getElementById('badge-p2-role');
+        if(r1)r1.textContent=`CPU Lv.${a1.level}`;if(r2)r2.textContent=`CPU Lv.${a2.level}`;
+        a1.onSpawn();a2.onSpawn();
+      }else{g1.aiControlled=true;g2.aiControlled=true;}
+    }
+    if(!replay)this.recorder.start({mode:this.mode,seed:this.seed,config:{
+      aiLevel:config.aiLevel||5,aiPps:config.aiPps||1.35,aiStyle:config.aiStyle||'balanced',
+      aiLevelB:config.aiLevelB||6,aiPpsB:config.aiPpsB||1.35,aiStyleB:config.aiStyleB||'aggressive'
+    },settings:this.settings});
+    document.getElementById('menu-modal').classList.add('hidden');document.getElementById('result-modal').classList.add('hidden');
+    this.lastTime=now();
+  },
+  routeAttack(from,n){const other=this.games.find(g=>g!==from&&!g.gameOver);if(other)other.receiveGarbage(n)},
+  dispatch(game,action,record=true,fromAI=false){
+    if(!game||game.gameOver||game.finished)return false;
+    let ok=false;
+    if(action==='left')ok=game.move(-1,fromAI);else if(action==='right')ok=game.move(1,fromAI);
+    else if(action==='down')ok=game.softDrop(fromAI);else if(action==='cw')ok=game.rotate(1,fromAI);
+    else if(action==='ccw')ok=game.rotate(-1,fromAI);else if(action==='hard')ok=game.hardDrop(fromAI);
+    else if(action==='hold')ok=game.doHold();
+    if(record&&ok)this.recorder.add(game.id,action,this.matchClock);return ok;
+  },
+  actionHuman(action,record=true){return this.dispatch(this.humanGame,action,record)},
+  totalPieces(){return this.games.reduce((s,g)=>s+g.pieces,0)},
+  togglePause(){
+    if(this.modalOpen())return;this.paused=!this.paused;document.getElementById('btn-pause').textContent=this.paused?'再開':'一時停止';
+  },
+  stepOne(){
+    if(!(this.mode==='cpu_cpu'||this.mode==='vs_cpu'))return;
+    this.paused=false;this.stepTarget=this.totalPieces()+1;document.getElementById('btn-pause').textContent='一時停止';
+  },
+  checkEnd(trigger,why='topout'){
+    if(this.mode==='marathon'&&trigger.gameOver){this.finish('GAME OVER','盤面が上端に到達しました。');return}
+    if(this.mode==='sprint'&&why==='sprint'){this.finish('40 LINES CLEAR',`TIME ${(trigger.elapsed/1000).toFixed(3)} s`);return}
+    if(this.mode==='vs_cpu'||this.mode==='cpu_cpu'){
+      const alive=this.games.filter(g=>!g.gameOver&&!g.finished);
+      if(alive.length<=1){
+        const winner=alive[0]||this.games.find(g=>g!==trigger);
+        this.finish(winner?`${winner.name} WIN`:'DRAW','対戦終了');
+      }
+    }
+  },
+  finish(title,desc){
+    this.paused=true;this.recorder.stop();
+    document.getElementById('result-title').textContent=title;document.getElementById('result-desc').textContent=desc;
+    const g=this.games[0];
+    const cells=[
+      ['SCORE',g.score.toLocaleString()],['LINES',g.lines],['PPS',g.pps().toFixed(2)],
+      ['APM',g.apm().toFixed(1)],['TETRIS',g.tetrisCount],['T-SPIN',g.tspinCount],
+      ['TSD',g.tspinDouble],['MAX COMBO',g.maxCombo],['PERFECT CLEAR',g.perfectClears]
+    ];
+    document.getElementById('result-grid').innerHTML=cells.map(([k,v])=>`<div class="result-cell"><span>${k}</span><b>${v}</b></div>`).join('');
+    document.getElementById('result-modal').classList.remove('hidden');
+  },
+  updateReplay(dt){
+    if(!this.replayMode||!this.replayData)return;
+    this.replayClock+=dt;
+    const ev=this.replayData.events;
+    while(this.replayIndex<ev.length&&ev[this.replayIndex].t<=this.replayClock){
+      const e=ev[this.replayIndex++],g=this.games.find(x=>x.id===e.side);this.dispatch(g,e.action,false,true);
+    }
+    if(this.replayIndex>=ev.length&&this.games.every(g=>g.gameOver||g.finished))this.replayMode=false;
+  },
+  loop(t){
+    const raw=Math.min(50,t-this.lastTime);this.lastTime=t;
+    const dt=raw*this.speed;
+    if(!this.paused&&!this.modalOpen()){
+      this.matchClock+=dt;
+      INPUT.update(dt);
+      if(this.replayMode)this.updateReplay(dt);else for(const ai of this.ais)ai.update(dt);
+      for(const g of this.games)g.update(dt);
+      if(this.stepTarget!==null&&this.totalPieces()>=this.stepTarget){this.paused=true;this.stepTarget=null;document.getElementById('btn-pause').textContent='再開'}
+    }
+    this.uiStatsAcc+=raw;
+    const refreshRates=this.uiStatsAcc>=100;
+    if(refreshRates)this.uiStatsAcc=0;
+    for(const g of this.games)updatePanel(g.id,g,refreshRates);
+    if(this.debug&&refreshRates)this.renderDebug();
+    requestAnimationFrame(x=>this.loop(x));
+  },
+  renderDebug(){
+    const ai=this.ais[0],body=document.getElementById('ai-debug-body');
+    if(!ai){body.textContent='CPUが存在するモードで使用できます。';return}
+    const c=ai.game.lastCandidates||[];
+    if(!c.length){body.textContent='候補計算待機中';return}
+    const header=`<div style="font-size:11px;color:#aab3c2;margin-bottom:8px">Lv.${ai.level} ${ai.profile.label} / depth ${ai.profile.depth} / beam ${ai.profile.beam} / shortlist ${ai.profile.shortlist}</div>`;
+    body.innerHTML=header+c.slice(0,6).map((x,i)=>{
+      const a=x.analysis||aiEvaluate(ai.game.board,x.result,ai.style,ai.context(),ai.profile);
+      const tag=x.result.tspin!=='none'?` / ${x.result.tspin}`:'';
+      return `<div class="debug-line"><span>#${i+1}</span><span>${x.type} x${x.p.x} r${x.p.rot}${tag}<br>holes ${a.features.holes} / H ${a.features.maxHeight} / ATK ${a.attack} / slots ${a.slots}</span><span>${x.score.toFixed(2)}</span></div>`;
+    }).join('');
+  }
+};
+const INPUT=new InputManager();
+
+/* =========================================================
+   UI events
+========================================================= */
+let selectedMode='marathon';
+document.querySelectorAll('.mode-card').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('.mode-card').forEach(x=>x.classList.remove('selected'));el.classList.add('selected');selectedMode=el.dataset.mode;
+}));
+function currentMenuConfig(){
+  const seedRaw=document.getElementById('menu-seed').value.trim();
+  return {mode:selectedMode,seed:seedRaw===''?APP.newSeed():(+seedRaw>>>0),
+    aiLevel:+document.getElementById('menu-ai-level').value,aiPps:+document.getElementById('menu-ai-pps').value,
+    aiStyle:document.getElementById('menu-ai-style').value,
+    aiLevelB:+document.getElementById('menu-ai-level-b').value,aiPpsB:+document.getElementById('menu-ai-pps-b').value,
+    aiStyleB:document.getElementById('menu-ai-style-b').value};
+}
+document.getElementById('btn-start').onclick=()=>APP.start(currentMenuConfig());
+document.getElementById('btn-replay-last').onclick=()=>{
+  try{
+    const data=JSON.parse(localStorage.getItem('tetris_ai_last_replay')||'null');
+    if(!data){alert('保存されたリプレイがありません。');return}
+    if(data.meta?.settings)Object.assign(APP.settings,data.meta.settings);
+    const c=data.meta?.config||{};
+    APP.start({mode:data.meta.mode,seed:data.meta.seed,aiLevel:c.aiLevel||5,aiPps:c.aiPps||1.35,aiStyle:c.aiStyle||'balanced',
+      aiLevelB:c.aiLevelB||6,aiPpsB:c.aiPpsB||1.35,aiStyleB:c.aiStyleB||'aggressive'},data);
+  }catch(e){alert('リプレイを読み込めませんでした。')}
+};
+document.getElementById('btn-pause').onclick=()=>APP.togglePause();
+document.getElementById('btn-step').onclick=()=>APP.stepOne();
+document.getElementById('speed-select').onchange=e=>APP.speed=+e.target.value;
+document.getElementById('btn-ai-debug').onclick=()=>{
+  APP.debug=!APP.debug;document.getElementById('ai-debug-panel').classList.toggle('hidden',!APP.debug);
+  document.getElementById('btn-ai-debug').classList.toggle('active',APP.debug);
+};
+document.getElementById('btn-menu').onclick=()=>{APP.paused=true;document.getElementById('menu-modal').classList.remove('hidden')};
+document.getElementById('btn-settings').onclick=()=>{
+  APP.paused=true;
+  document.getElementById('set-das').value=APP.settings.das;document.getElementById('set-arr').value=APP.settings.arr;
+  document.getElementById('set-lock').value=APP.settings.lockDelay;document.getElementById('set-soft').value=APP.settings.softDrop;
+  document.getElementById('set-sound').value=APP.settings.sound?'1':'0';document.getElementById('set-ghost').value=APP.settings.ghost?'1':'0';
+  document.getElementById('settings-modal').classList.remove('hidden');
+};
+document.getElementById('btn-settings-close').onclick=()=>document.getElementById('settings-modal').classList.add('hidden');
+document.getElementById('btn-settings-save').onclick=()=>{
+  APP.settings.das=+document.getElementById('set-das').value;APP.settings.arr=+document.getElementById('set-arr').value;
+  APP.settings.lockDelay=+document.getElementById('set-lock').value;APP.settings.softDrop=+document.getElementById('set-soft').value;
+  APP.settings.sound=document.getElementById('set-sound').value==='1';APP.settings.ghost=document.getElementById('set-ghost').value==='1';
+  sfx.enabled=APP.settings.sound;localStorage.setItem('tetris_ai_settings',JSON.stringify(APP.settings));
+  document.getElementById('settings-modal').classList.add('hidden');
+};
+document.getElementById('btn-result-menu').onclick=()=>{document.getElementById('result-modal').classList.add('hidden');document.getElementById('menu-modal').classList.remove('hidden')};
+document.getElementById('btn-retry').onclick=()=>{const meta=APP.recorder.meta||currentMenuConfig();APP.start({
+  mode:APP.mode,seed:APP.seed,aiLevel:meta.config?.aiLevel||5,aiPps:meta.config?.aiPps||1.35,aiStyle:meta.config?.aiStyle||'balanced',
+  aiLevelB:meta.config?.aiLevelB||6,aiPpsB:meta.config?.aiPpsB||1.35,aiStyleB:meta.config?.aiStyleB||'aggressive'
+})};
+document.getElementById('btn-export-replay').onclick=()=>APP.recorder.export();
+
+/* load persisted settings */
+try{const s=JSON.parse(localStorage.getItem('tetris_ai_settings')||'null');if(s)Object.assign(APP.settings,s)}catch(_){}
+sfx.enabled=APP.settings.sound;
+
+/* initial empty board behind the menu */
+APP.mode='marathon';APP.seed=APP.newSeed();APP.setupPanels();
+const demo=new TetrisGame({id:'p1',name:'YOU',mode:'marathon',seed:APP.seed});
+APP.games=[demo];APP.humanGame=null;APP.paused=true;
+requestAnimationFrame(t=>{APP.lastTime=t;APP.loop(t)});
+</script>
+</body>
+</html>
