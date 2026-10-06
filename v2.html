@@ -1,0 +1,2705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tetris AI AutoTrainer V2 · Adaptive</title>
+<style>
+:root{
+  --bg:#070a12;--panel:#101522;--panel2:#151c2c;--line:#263149;
+  --text:#eef4ff;--muted:#93a4c4;--a:#56c7ff;--b:#ff8a65;
+  --good:#65d88b;--warn:#ffd166;--bad:#ff6b7a;--accent:#9b8cff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#070a12,#0b1020 55%,#070a12);color:var(--text);
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.wrap{max-width:1500px;margin:auto;padding:22px}
+.hero{display:flex;gap:18px;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+h1{font-size:clamp(24px,4vw,42px);margin:0 0 7px;letter-spacing:-.03em}
+.hero p{margin:0;color:var(--muted);line-height:1.6;max-width:900px}
+.badge{border:1px solid var(--line);background:#0d1320;border-radius:12px;padding:10px 13px;color:var(--muted);font-size:12px;white-space:nowrap}
+.card{background:rgba(16,21,34,.93);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 14px 40px #0005}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cpu{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--panel2)}
+.cpu.a{box-shadow:inset 3px 0 var(--a)} .cpu.b{box-shadow:inset 3px 0 var(--b)}
+.cpu h2{font-size:17px;margin:0 0 12px}.cpu.a h2{color:var(--a)}.cpu.b h2{color:var(--b)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.field label,.simgrid label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
+input,select{width:100%;background:#090e19;color:var(--text);border:1px solid #2b3853;border-radius:10px;padding:9px 10px;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+.simrow{margin-top:14px}.simgrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.check{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;padding-top:22px}.check input{width:auto}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+.btn{border:1px solid #34425f;background:#18233a;color:white;border-radius:11px;padding:10px 15px;font-weight:800}
+.btn.primary{background:linear-gradient(135deg,#5b7cff,#8d62ff);border:0}
+.btn.a{background:#10344c;border-color:#21658c}.btn.batch{background:#3a274f;border-color:#68468a}
+.btn.danger{background:#3b1821;border-color:#72303d}.btn:disabled{opacity:.4;cursor:not-allowed}
+.note{margin-top:12px;padding:11px 13px;border-radius:12px;background:#0a101c;border:1px solid #24304a;color:var(--muted);font-size:12px;line-height:1.6}
+.status{margin-top:14px;display:none}.status.show{display:block}
+.progress{height:12px;background:#070b13;border:1px solid #27324a;border-radius:999px;overflow:hidden}
+.progress>div{height:100%;width:0;background:linear-gradient(90deg,#5c8bff,#ab73ff);transition:width .2s}
+.statusline{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:7px;gap:12px}
+.section{margin-top:18px}.section h2{font-size:20px;margin:0 0 12px}
+.result-head{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+.winner{font-size:30px;font-weight:900;margin:3px 0}.winner.A{color:var(--a)}.winner.B{color:var(--b)}.winner.draw{color:var(--warn)}
+.meta{color:var(--muted);font-size:13px;line-height:1.7}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}
+.kpi{background:#0b111e;border:1px solid #25314a;border-radius:12px;padding:11px}
+.kpi span{display:block;font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.kpi b{display:block;font-size:20px;margin-top:3px}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px}
+.statbox{background:#0b111e;border:1px solid #25314a;border-radius:14px;padding:12px}
+.statbox h3{margin:0 0 9px}.statbox.a h3{color:var(--a)}.statbox.b h3{color:var(--b)}
+.stats-table{width:100%;border-collapse:collapse;font-size:12px}.stats-table td{padding:5px 4px;border-bottom:1px solid #1d2638}.stats-table td:last-child{text-align:right;font-weight:800}
+.boards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px}
+.boardwrap{display:flex;gap:12px;align-items:flex-start;background:#0b111e;border:1px solid #25314a;border-radius:14px;padding:12px}
+.board{display:grid;grid-template-columns:repeat(10,12px);grid-template-rows:repeat(20,12px);gap:1px;background:#02050a;padding:3px;border-radius:5px}
+.cell{width:12px;height:12px;background:#111827}.PVPLACED{background:#eef4ff}.I{background:#53c7e8}.J{background:#5a78e8}.L{background:#e99a45}.O{background:#e8cc55}.S{background:#61c77a}.T{background:#a673db}.Z{background:#e46672}.G{background:#606875}
+.scroll{overflow:auto;max-height:580px;border:1px solid #25314a;border-radius:12px}
+table.log{border-collapse:collapse;width:100%;font-size:11px;white-space:nowrap}
+.log th{position:sticky;top:0;background:#151c2c;color:#aebbd3;text-align:left;padding:7px;border-bottom:1px solid #32405d;z-index:1}
+.log td{padding:6px 7px;border-bottom:1px solid #1c2537}.log tr:nth-child(even){background:#0c1220}
+.tagA{color:var(--a);font-weight:900}.tagB{color:var(--b);font-weight:900}.bigclear{color:var(--good);font-weight:800}.single{color:#c5ccda}
+.batchTop{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.winbar{height:34px;display:flex;border-radius:10px;overflow:hidden;background:#20283a;margin-top:10px}.winbar>div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;min-width:0}.wa{background:#2c8dc0}.wd{background:#8d7939}.wb{background:#c95c40}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px}.chart{background:#0b111e;border:1px solid #25314a;border-radius:14px;padding:12px}.chart canvas{width:100%;height:230px;display:block}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.small{font-size:11px;color:var(--muted)}
+.placement-viewer{margin-top:16px;padding:14px;border:1px solid #31405f;border-radius:14px;background:#0a101c}
+.pv-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.pv-title{font-size:17px;font-weight:900}.pv-meta{color:var(--muted);font-size:12px;line-height:1.6;margin-top:3px}
+.pv-actions{display:flex;gap:7px;flex-wrap:wrap}.pv-actions .btn{padding:7px 11px;font-size:12px}
+.pv-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pv-panel{min-width:0;background:#0b111e;border:1px solid #25314a;border-radius:12px;padding:10px}
+.pv-panel h4{margin:0 0 7px;font-size:12px;color:#c8d4e9}
+.pv-board{display:grid;grid-template-columns:repeat(10,13px);grid-template-rows:repeat(24,13px);gap:1px;background:#02050a;padding:4px;border-radius:6px;width:max-content;max-width:100%}
+.pv-cell{width:13px;height:13px;background:#111827;position:relative}
+.pv-cell.hidden-row{opacity:.48}
+.pv-cell.placed{outline:2px solid #fff;outline-offset:-2px;z-index:2}
+.pv-cell.clear-row::after{content:'';position:absolute;inset:1px;border-top:1px solid #ffd166;border-bottom:1px solid #ffd166;opacity:.9}
+.pv-legend{font-size:10px;color:var(--muted);line-height:1.5;margin-top:7px}
+.event-row{cursor:pointer}.event-row.selected{background:#22304a!important;box-shadow:inset 3px 0 #9b8cff}
+.event-row:focus{outline:2px solid #9b8cff;outline-offset:-2px}
+.pv-path{margin-top:10px;padding:8px 10px;border-radius:9px;background:#080d17;border:1px solid #202a3e;color:#aebbd3;font-size:11px;line-height:1.5;word-break:break-word}
+.hidden{display:none!important}
+
+.autotrain{margin-bottom:18px;border-color:#46567d;background:linear-gradient(180deg,rgba(20,27,46,.97),rgba(12,17,30,.97))}
+.autotrain h2{margin:0 0 5px;font-size:24px}.autotrain .lead{color:var(--muted);font-size:13px;line-height:1.65;margin-bottom:14px}
+.tr-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.tr-grid .wide{grid-column:span 2}
+.tr-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+.tr-dashboard{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin-top:14px}
+.tr-kpi{background:#09101d;border:1px solid #2b3854;border-radius:12px;padding:10px}
+.tr-kpi span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}.tr-kpi b{display:block;font-size:18px;margin-top:4px}
+.tr-stage{margin-top:13px;padding:10px 12px;border:1px solid #2f3d59;background:#080e19;border-radius:11px;font-size:12px;line-height:1.55}
+.tr-log{height:240px;overflow:auto;background:#050912;border:1px solid #263149;border-radius:11px;padding:10px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c6d2e8;white-space:pre-wrap;margin-top:10px}
+.tr-charts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.tr-charts canvas{width:100%;height:190px;background:#080d17;border:1px solid #263149;border-radius:10px;display:block}
+.tr-progress{margin-top:10px;height:11px;background:#070b13;border:1px solid #27324a;border-radius:999px;overflow:hidden}.tr-progress>div{height:100%;width:0;background:linear-gradient(90deg,#65d88b,#56c7ff,#9b8cff)}
+.tr-sub{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.5}
+.tr-warning{color:var(--warn)}.tr-good{color:var(--good)}.tr-bad{color:var(--bad)}
+@media(max-width:1100px){.tr-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.tr-dashboard{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.tr-grid{grid-template-columns:1fr 1fr}.tr-grid .wide{grid-column:span 2}.tr-charts{grid-template-columns:1fr}.tr-dashboard{grid-template-columns:1fr 1fr}}
+
+@media(max-width:900px){
+ .controls,.compare,.boards,.batchTop,.charts,.result-head{grid-template-columns:1fr}
+ .grid{grid-template-columns:1fr 1fr}.simgrid{grid-template-columns:1fr 1fr}
+ .kpis{grid-template-columns:repeat(3,1fr)}.hero{display:block}.badge{display:inline-block;margin-top:10px}
+ .pv-grid{grid-template-columns:1fr}.pv-board{grid-template-columns:repeat(10,12px);grid-template-rows:repeat(24,12px)}.pv-cell{width:12px;height:12px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <h1>TETRIS AI AUTOTRAINER V2 · ADAPTIVE</h1>
+      <p>AI v5 / FAIR TURBOを土台に、時間予算つきEvolution・ランキング事前学習・44特徴NN・Replay Buffer・Hall of Fame混合Self-play・逐次Promotion判定・固定v5ベンチ・安全なCheckpointまで1ファイルで自走します。短時間Presetでも「まず学習して、必ず測る」構成です。</p>
+    </div>
+    <div class="badge">Engine <b>AI v5 / FAIR TURBO</b><br>AutoTrainer V2 adaptive edition</div>
+  </div>
+
+
+  <div class="card autotrain" id="autotrain-card">
+    <h2>AutoTrainer V2 · Adaptive / Time-budgeted</h2>
+    <div class="lead">
+      V2は「回数を全部消化するまで終わらない」方式をやめ、<b>壁時計の時間予算</b>を最優先します。
+      Engine regression → baseline → adaptive Evolution → candidate ranking pretrain → mixed Self-play + Replay →
+      sequential Promotion → v5 anchor benchmark → Style / Level → Final regression の順です。
+      <b>未完了cycleは完了扱いにしません。</b> Stop / ブラウザ終了後は last completed cycle から安全にやり直します。
+    </div>
+    <div class="tr-grid">
+      <div class="field"><label>Preset</label><select id="tr-preset">
+        <option value="sprint">Sprint 15m</option><option value="quick">Quick 30m</option>
+        <option value="standard" selected>Standard 60m</option><option value="serious">Serious 180m</option>
+      </select></div>
+      <div class="field"><label>Total time budget (min)</label><input id="tr-budget-min" type="number" min="5" max="1440" value="60"></div>
+      <div class="field"><label>Master seed</label><input id="tr-seed" type="number" value="2908160852"></div>
+      <div class="field"><label>Workers</label><select id="tr-workers"></select></div>
+      <div class="field"><label>Max pieces / side</label><input id="tr-max-pieces" type="number" min="80" max="5000" value="450"></div>
+      <div class="field"><label>Master style</label><select id="tr-master-style">
+        <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tspin">T-Spin</option>
+      </select></div>
+      <div class="field"><label>Legacy import Champion ver</label><input id="tr-import-version" type="number" min="1" max="999" value="4"></div>
+
+      <div class="field"><label>Evolution max minutes</label><input id="tr-evo-budget" type="number" min="0" max="600" value="12"></div>
+      <div class="field"><label>Evolution generations</label><input id="tr-evo-gen" type="number" min="0" max="200" value="4"></div>
+      <div class="field"><label>Evolution population</label><input id="tr-evo-pop" type="number" min="4" max="64" value="8"></div>
+      <div class="field"><label>Evo min → max pairs</label><div style="display:flex;gap:6px"><input id="tr-evo-min-pairs" type="number" min="1" max="50" value="1"><input id="tr-evo-max-pairs" type="number" min="1" max="100" value="3"></div></div>
+      <div class="field"><label>Evo no-improve patience</label><input id="tr-evo-patience" type="number" min="1" max="20" value="2"></div>
+
+      <div class="field"><label>Teacher matches</label><input id="tr-teacher" type="number" min="0" max="1000" value="6"></div>
+      <div class="field"><label>Ranking pretrain epochs</label><input id="tr-pre-epochs" type="number" min="0" max="100" value="6"></div>
+      <div class="field"><label>NN hidden units</label><input id="tr-hidden" type="number" min="8" max="128" step="4" value="48"></div>
+      <div class="field"><label>Mini-batch size</label><input id="tr-batch-size" type="number" min="16" max="1024" step="16" value="128"></div>
+      <div class="field"><label>Learning rate</label><input id="tr-lr" type="number" min=".00001" max=".2" step=".0001" value=".0025"></div>
+      <div class="field"><label>Gradient clip</label><input id="tr-grad-clip" type="number" min=".1" max="20" step=".1" value="3"></div>
+
+      <div class="field"><label>Self-play max cycles</label><input id="tr-cycles" type="number" min="0" max="1000" value="10"></div>
+      <div class="field"><label>Self-play matches / cycle</label><input id="tr-sp-matches" type="number" min="1" max="1000" value="5"></div>
+      <div class="field"><label>Replay buffer samples</label><input id="tr-replay-max" type="number" min="0" max="30000" step="250" value="3000"></div>
+      <div class="field"><label>Gamma</label><input id="tr-gamma" type="number" min=".9" max=".99999" step=".0001" value=".999"></div>
+      <div class="field"><label>No-promotion patience</label><input id="tr-no-promo-patience" type="number" min="1" max="50" value="3"></div>
+
+      <div class="field"><label>Promotion min → max pairs</label><div style="display:flex;gap:6px"><input id="tr-promo-min-pairs" type="number" min="2" max="500" value="6"><input id="tr-promo-max-pairs" type="number" min="2" max="1000" value="18"></div></div>
+      <div class="field"><label>Promotion threshold</label><input id="tr-promo-threshold" type="number" min=".5" max=".75" step=".005" value=".52"></div>
+      <div class="field"><label>v5 anchor pairs / promoted cycle</label><input id="tr-anchor-pairs" type="number" min="0" max="100" value="3"></div>
+
+      <div class="field"><label>Style tune matches</label><input id="tr-style-matches" type="number" min="0" max="500" value="2"></div>
+      <div class="field"><label>Level ladder pairs</label><input id="tr-level-pairs" type="number" min="0" max="300" value="1"></div>
+      <div class="field"><label>Final eval pairs</label><input id="tr-final-pairs" type="number" min="0" max="2000" value="8"></div>
+    </div>
+
+    <div class="tr-actions">
+      <button class="btn primary" id="tr-start">V2 学習開始</button>
+      <button class="btn" id="tr-pause" disabled>一時停止</button>
+      <button class="btn danger" id="tr-stop" disabled>安全停止</button>
+      <button class="btn" id="tr-resume">Checkpointを再開</button>
+      <button class="btn" id="tr-export-model">Model JSON</button>
+      <button class="btn" id="tr-export-state">Full State JSON</button>
+      <button class="btn" id="tr-import">Model / State JSON読込</button>
+      <input id="tr-import-file" type="file" accept="application/json,.json" style="display:none">
+      <button class="btn" id="tr-export-html">学習済み単一HTML</button>
+      <button class="btn" id="tr-clear">Checkpoint削除</button>
+    </div>
+    <div class="tr-progress"><div id="tr-bar"></div></div>
+    <div class="tr-stage" id="tr-stage">待機中。V1とは別のCheckpointキーを使うので既存学習状態は壊しません。</div>
+    <div class="tr-dashboard">
+      <div class="tr-kpi"><span>Stage</span><b id="tr-k-stage">IDLE</b></div>
+      <div class="tr-kpi"><span>Last completed</span><b id="tr-k-cycle">0</b></div>
+      <div class="tr-kpi"><span>Active cycle</span><b id="tr-k-active">—</b></div>
+      <div class="tr-kpi"><span>Champion ver</span><b id="tr-k-champ">0</b></div>
+      <div class="tr-kpi"><span>Matches</span><b id="tr-k-matches">0</b></div>
+      <div class="tr-kpi"><span>Training samples</span><b id="tr-k-samples">0</b></div>
+      <div class="tr-kpi"><span>Replay</span><b id="tr-k-replay">0</b></div>
+      <div class="tr-kpi"><span>Best promotion</span><b id="tr-k-score">—</b></div>
+      <div class="tr-kpi"><span>Last v5 anchor</span><b id="tr-k-anchor">—</b></div>
+      <div class="tr-kpi"><span>Time left</span><b id="tr-k-time">—</b></div>
+    </div>
+    <div class="tr-charts"><canvas id="tr-chart-strength" width="600" height="190"></canvas><canvas id="tr-chart-loss" width="600" height="190"></canvas></div>
+    <div class="tr-log" id="tr-log"></div>
+    <details class="tr-sub" style="margin-top:10px">
+      <summary><b>V2で何が変わったか</b></summary>
+      <div style="margin-top:8px;line-height:1.7">
+        NN入力は24→44特徴（従来24 + 10列の高さ + 10列の穴数）。Evolutionは従来24特徴だけを調整して探索次元を増やしません。<br>
+        Teacherは絶対点のコピーではなく候補順位をpairwise logistic lossで学習。Self-playは現Champion / Hall of Fame / 素のv5を混ぜ、過去局面はReplay Bufferから再利用します。<br>
+        Promotionは固定32戦一発判定ではなく、少数pairから始めて曖昧なときだけ追加する90%CIの逐次判定です。時間予算に達したら新しい重い処理を開始せず、現在match/batchの終了後にまとめへ進みます。<br>
+        旧24入力Model JSONは読み込み時に44入力へゼロ拡張するため、追加20特徴は最初は影響0、その後の学習から利用されます。
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="controls">
+      <div class="cpu a">
+        <h2>CPU A</h2>
+        <div class="grid">
+          <div class="field"><label>Level</label><select id="a-level"></select></div>
+          <div class="field legacy-pps"><label>PPS <span class="muted">(PPS modeのみ)</span></label><input id="a-pps" type="number" min=".2" max="6" step=".1" value=".5"></div>
+          <div class="field"><label>Style</label><select id="a-style"></select></div>
+        </div>
+      </div>
+      <div class="cpu b">
+        <h2>CPU B</h2>
+        <div class="grid">
+          <div class="field"><label>Level</label><select id="b-level"></select></div>
+          <div class="field legacy-pps"><label>PPS <span class="muted">(PPS modeのみ)</span></label><input id="b-pps" type="number" min=".2" max="6" step=".1" value="1"></div>
+          <div class="field"><label>Style</label><select id="b-style"></select></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="simrow">
+      <div class="simgrid">
+        <div><label>Simulation</label><select id="sim-mode"><option value="turbo" selected>TURBO：PPS無視・等ミノ数</option><option value="pps">PPS仮想時間（旧方式）</option></select></div>
+        <div><label>Base seed</label><input id="seed" type="number" value="3175943179"></div>
+        <div><label>試合数</label><input id="matches" type="number" min="1" max="10000" value="100"></div>
+        <div class="legacy-time"><label>最大仮想時間 (秒)</label><input id="max-sec" type="number" min="10" max="3600" value="180"></div>
+        <div><label>最大ミノ / side</label><input id="max-pieces" type="number" min="20" max="5000" value="600"></div>
+        <div><label>Workers</label><select id="workers"></select></div>
+        <div class="check"><input id="paired" type="checkbox" checked><label for="paired">Paired seed監査（同seedを左右反転で2戦）</label></div>
+        <div class="check"><input id="swap" type="checkbox" checked><label for="swap">非paired時に左右を交互に入替</label></div>
+        <div class="check"><input id="use-trained" type="checkbox" checked><label for="use-trained">学習済みmodelがあれば通常ベンチでも使用</label></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn a" id="run-one">1戦だけ詳しく</button>
+      <button class="btn batch" id="run-batch">多数戦を実行</button>
+      <button class="btn danger" id="stop" disabled>停止</button>
+    </div>
+
+    <div class="note">
+      <b>FAIR TURBO（標準）:</b> PPS・待機時間・操作アニメーションを完全に無視し、A/Bは各ラウンド開始時の状態からそれぞれ1手を決定します。
+      両者をlockした後で、既存Incomingの自己相殺 → Garbage rise → 同ラウンド攻撃同士のClash → 残差送信、の順に<b>同時決済</b>します。
+      片方が先に処理されたせいで「先手だけ送信・後手だけ相殺」になることはありません。同時Top-outはDRAWです。
+      <br><b>Paired seed監査</b>をONにすると、同じseedを2回使ってA/Bの物理左右だけ反転します。AI乱数seedは論理CPU A/Bに固定されるため、2戦の論理結果が食い違えば座席依存バグを疑えます。
+      <br><b>PPS仮想時間</b>は旧方式を比較したい場合だけ使用します。
+    </div>
+
+    <div class="status" id="status">
+      <div class="progress"><div id="bar"></div></div>
+      <div class="statusline"><span id="status-text"></span><span id="status-time"></span></div>
+    </div>
+  </div>
+
+  <section class="section hidden" id="single-section">
+    <h2>1戦詳細</h2>
+    <div class="card" id="single-result"></div>
+  </section>
+
+  <section class="section hidden" id="batch-section">
+    <h2>多数戦集計</h2>
+    <div class="card" id="batch-result"></div>
+  </section>
+</div>
+
+<script id="autotrain-embedded-model" type="application/json">null</script>
+
+<script id="worker-code" type="text/plain">
+'use strict';
+const COLS = 10, VISIBLE_ROWS = 20, HIDDEN_ROWS = 4, ROWS = VISIBLE_ROWS + HIDDEN_ROWS;
+const PIECE_NAMES = ['I','J','L','O','S','T','Z'];
+const COLORS = {
+  I:'#53c7e8',J:'#5a78e8',L:'#e99a45',O:'#e8cc55',S:'#61c77a',T:'#a673db',Z:'#e46672',G:'#606875'
+};
+const MODE_LABEL = {marathon:'MARATHON', sprint:'SPRINT 40L', vs_cpu:'VS CPU', cpu_cpu:'CPU vs CPU'};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const deepBoard=b=>b.map(r=>r.slice());
+const now=()=>performance.now();
+
+class PRNG{
+  constructor(seed){this.state=(seed>>>0)||0x12345678}
+  next(){
+    let t=this.state+=0x6D2B79F5;
+    t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);
+    return ((t^t>>>14)>>>0)/4294967296;
+  }
+  int(n){return Math.floor(this.next()*n)}
+  range(a,b){return a+(b-a)*this.next()}
+}
+class Bag{
+  constructor(rng){this.rng=rng;this.q=[]}
+  fill(){
+    const a=PIECE_NAMES.slice();
+    for(let i=a.length-1;i>0;i--){const j=this.rng.int(i+1);[a[i],a[j]]=[a[j],a[i]]}
+    this.q.push(...a);
+  }
+  next(){if(this.q.length<7)this.fill();return this.q.shift()}
+}
+
+/* SRS-compatible piece states in 4x4 local coordinates */
+const SHAPES={
+I:[
+ [[0,1],[1,1],[2,1],[3,1]], [[2,0],[2,1],[2,2],[2,3]],
+ [[0,2],[1,2],[2,2],[3,2]], [[1,0],[1,1],[1,2],[1,3]]
+],
+O:[
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]],
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]]
+],
+T:[
+ [[1,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[2,1],[1,2]], [[1,0],[0,1],[1,1],[1,2]]
+],
+J:[
+ [[0,0],[0,1],[1,1],[2,1]], [[1,0],[2,0],[1,1],[1,2]],
+ [[0,1],[1,1],[2,1],[2,2]], [[1,0],[1,1],[0,2],[1,2]]
+],
+L:[
+ [[2,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[1,2],[2,2]],
+ [[0,1],[1,1],[2,1],[0,2]], [[0,0],[1,0],[1,1],[1,2]]
+],
+S:[
+ [[1,0],[2,0],[0,1],[1,1]], [[1,0],[1,1],[2,1],[2,2]],
+ [[1,1],[2,1],[0,2],[1,2]], [[0,0],[0,1],[1,1],[1,2]]
+],
+Z:[
+ [[0,0],[1,0],[1,1],[2,1]], [[2,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[1,2],[2,2]], [[1,0],[0,1],[1,1],[0,2]]
+]
+};
+/* y is positive downward, therefore standard SRS y offsets are inverted */
+const KICKS_JLSTZ={
+ '0>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '1>0':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '1>2':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '2>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '2>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]],
+ '3>2':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '3>0':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '0>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]]
+};
+const KICKS_I={
+ '0>1':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '1>0':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '1>2':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]],
+ '2>1':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '2>3':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '3>2':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '3>0':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '0>3':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]]
+};
+function cellsOf(piece){
+  return SHAPES[piece.type][piece.rot].map(([dx,dy])=>[piece.x+dx,piece.y+dy]);
+}
+function collides(board,piece){
+  for(const [x,y] of cellsOf(piece)){
+    if(x<0||x>=COLS||y>=ROWS)return true;
+    if(y>=0&&board[y][x])return true;
+  }
+  return false;
+}
+function grounded(board,p){const q={...p,y:p.y+1};return collides(board,q)}
+function tryRotateOn(board,p,dir){
+  if(p.type==='O')return {piece:{...p,rot:(p.rot+(dir>0?1:3))%4},kickIndex:0};
+  const nr=(p.rot+(dir>0?1:3))%4,key=`${p.rot}>${nr}`;
+  const kicks=p.type==='I'?KICKS_I[key]:KICKS_JLSTZ[key];
+  for(let i=0;i<(kicks||[[0,0]]).length;i++){
+    const [kx,ky]=(kicks||[[0,0]])[i],q={...p,x:p.x+kx,y:p.y+ky,rot:nr};
+    if(!collides(board,q))return {piece:q,kickIndex:i};
+  }
+  return null;
+}
+function dropY(board,p){let q={...p};while(!collides(board,{...q,y:q.y+1}))q.y++;return q}
+function makeBoard(){return Array.from({length:ROWS},()=>Array(COLS).fill(null))}
+function clearCompletedLines(board){
+  // Remove all completed rows as one batch. Adding empty rows after each
+  // splice shifts the indexes of the remaining completed rows and can skip one.
+  const remaining=board.filter(row=>!row.every(Boolean));
+  const lines=ROWS-remaining.length;
+  if(lines>0){
+    const empty=Array.from({length:lines},()=>Array(COLS).fill(null));
+    board.splice(0,board.length,...empty,...remaining);
+  }
+  return lines;
+}
+
+/* =========================================================
+   Audio
+========================================================= */
+class SoundFX{
+  constructor(){this.ctx=null;this.enabled=true}
+  tone(freq=440,dur=.05,type='sine',gain=.035){
+    if(!this.enabled)return;
+    try{
+      if(!this.ctx)this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+      if(this.ctx.state==='suspended')this.ctx.resume();
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain(),t=this.ctx.currentTime;
+      o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(gain,t);
+      g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(this.ctx.destination);o.start(t);o.stop(t+dur);
+    }catch(_){}
+  }
+  move(){this.tone(180,.025,'square',.018)}
+  rotate(){this.tone(260,.035,'square',.02)}
+  hard(){this.tone(95,.07,'triangle',.045)}
+  clear(n){this.tone(n===4?700:480+n*65,.12,'sine',.05)}
+  tspin(){this.tone(850,.16,'triangle',.06)}
+  ko(){this.tone(80,.45,'sawtooth',.07)}
+}
+const sfx=new SoundFX();
+
+/* =========================================================
+   T-Spin, scoring and attack
+========================================================= */
+function occupiedOrWall(board,x,y){return x<0||x>=COLS||y<0||y>=ROWS||!!board[y][x]}
+function detectTSpin(board,p,lastWasRotate,lastKickIndex){
+  if(p.type!=='T'||!lastWasRotate)return {type:'none',corners:0};
+  const cx=p.x+1,cy=p.y+1;
+  const c=[
+    occupiedOrWall(board,cx-1,cy-1),occupiedOrWall(board,cx+1,cy-1),
+    occupiedOrWall(board,cx-1,cy+1),occupiedOrWall(board,cx+1,cy+1)
+  ];
+  const count=c.filter(Boolean).length;if(count<3)return {type:'none',corners:count};
+  const fronts={0:[0,1],1:[1,3],2:[2,3],3:[0,2]}[p.rot];
+  const frontCount=fronts.reduce((s,i)=>s+(c[i]?1:0),0);
+  return {type:(frontCount===2||lastKickIndex===4)?'full':'mini',corners:count};
+}
+function attackFor(lines,tspinType,b2bBefore,combo,perfectClear){
+  let atk=0;
+  if(tspinType==='full')atk=[0,2,4,6][lines]||0;
+  else if(tspinType==='mini')atk=lines===1?1:0;
+  else atk=[0,0,1,2,4][lines]||0;
+  const difficult=(lines===4||(tspinType!=='none'&&lines>0));
+  if(difficult&&b2bBefore)atk+=1;
+  if(combo>0){
+    const table=[0,0,1,1,2,2,3,3,4,4,5,5,5];
+    atk+=table[Math.min(combo,table.length-1)];
+  }
+  if(perfectClear)atk+=10;
+  return atk;
+}
+function scoreFor(lines,tspinType,b2bBefore,combo,level,perfectClear){
+  let s=0;
+  if(tspinType==='full')s=[400,800,1200,1600][lines]||0;
+  else if(tspinType==='mini')s=lines===1?200:100;
+  else s=[0,100,300,500,800][lines]||0;
+  if((lines===4||(tspinType!=='none'&&lines>0))&&b2bBefore)s=Math.floor(s*1.5);
+  if(combo>0)s+=50*combo;
+  if(perfectClear)s+=3500;
+  return s*Math.max(1,level);
+}
+
+/* =========================================================
+   Game board
+========================================================= */
+class TetrisGame{
+  constructor(opts){
+    Object.assign(this,opts);
+    this.rng=new PRNG(opts.seed);
+    this.garbageRng=new PRNG((opts.seed^0x9E3779B9)>>>0);
+    this.bag=new Bag(this.rng);
+    this.reset();
+  }
+  reset(){
+    this.board=makeBoard();this.queue=[];while(this.queue.length<7)this.queue.push(this.bag.next());
+    this.hold=null;this.holdUsed=false;this.active=null;this.gameOver=false;this.finished=false;
+    this.score=0;this.lines=0;this.level=1;this.combo=-1;this.b2b=false;this.maxCombo=0;
+    this.pieces=0;this.attacks=0;this.received=0;this.pendingGarbage=0;
+    this.tetrisCount=0;this.tspinCount=0;this.tspinDouble=0;this.perfectClears=0;
+    this.gravityAcc=0;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    this.startTime=now();this.elapsed=0;this.eventText='';this.aiThought='';this.lastCandidates=[];this.aiControlled=false;
+    this.spawn();
+  }
+  spawn(type=null){
+    if(!type){
+      type=this.queue.shift();while(this.queue.length<7)this.queue.push(this.bag.next());
+    }
+    this.active={type,x:3,y:1,rot:0};
+    this.holdUsed=false;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    if(collides(this.board,this.active)){this.topOut();return false}
+    if(this.onSpawn)this.onSpawn(this);
+    return true;
+  }
+  topOut(){
+    if(this.gameOver)return;this.gameOver=true;this.finished=true;sfx.ko();
+    if(this.onTopOut)this.onTopOut(this);
+  }
+  gravityMs(){
+    if(this.mode==='sprint'||this.mode==='vs_cpu'||this.mode==='cpu_cpu')return 800;
+    const l=Math.max(1,this.level);
+    return Math.max(16,1000*Math.pow(0.8-((l-1)*0.007),l-1));
+  }
+  move(dx,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,x:this.active.x+dx};
+    if(collides(this.board,q))return false;
+    const wasGround=grounded(this.board,this.active);this.active=q;this.lastAction='move';
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.move();return true;
+  }
+  softDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,y:this.active.y+1};
+    if(collides(this.board,q))return false;
+    this.active=q;this.lastAction='down';if(!fromAI)this.score+=1;return true;
+  }
+  rotate(dir,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const wasGround=grounded(this.board,this.active);
+    const res=tryRotateOn(this.board,this.active,dir);if(!res)return false;
+    this.active=res.piece;this.lastAction='rotate';this.lastKickIndex=res.kickIndex;
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.rotate();return true;
+  }
+  hardDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    let d=0;while(this.softDrop(true))d++;
+    if(!fromAI)this.score+=d*2;
+    this.lastAction=this.lastAction==='rotate'?'rotate':'hard';
+    sfx.hard();this.lockPiece();return true;
+  }
+  doHold(){
+    if(this.gameOver||this.holdUsed||!this.active)return false;
+    const old=this.active.type;
+    if(this.hold===null){this.hold=old;this.active=null;this.spawn()}
+    else{const h=this.hold;this.hold=old;this.active=null;this.spawn(h)}
+    this.holdUsed=true;this.lastAction='hold';return true;
+  }
+  lockPiece(){
+    if(!this.active||this.gameOver)return;
+    const p={...this.active};
+    const tspin=detectTSpin(this.board,p,this.lastAction==='rotate',this.lastKickIndex);
+    for(const [x,y] of cellsOf(p)){
+      if(y<0){this.topOut();return}
+      this.board[y][x]=p.type;
+    }
+    this.pieces++;
+    const lines=clearCompletedLines(this.board);
+    const perfect=this.board.every(row=>row.every(v=>!v));
+    if(perfect)this.perfectClears++;
+    const difficult=lines===4||(tspin.type!=='none'&&lines>0);
+    const b2bBefore=this.b2b;
+    if(lines>0){this.combo++;this.maxCombo=Math.max(this.maxCombo,this.combo)}
+    else this.combo=-1;
+    if(difficult)this.b2b=true;else if(lines>0)this.b2b=false;
+    if(lines===4)this.tetrisCount++;
+    if(tspin.type!=='none'){this.tspinCount++;if(lines===2)this.tspinDouble++}
+    this.score+=scoreFor(lines,tspin.type,b2bBefore,this.combo,this.level,perfect);
+    this.lines+=lines;
+    if(this.mode==='marathon')this.level=1+Math.floor(this.lines/10);
+    let atk=attackFor(lines,tspin.type,b2bBefore,this.combo,perfect);
+    if(atk>0){
+      const cancelled=Math.min(atk,this.pendingGarbage);this.pendingGarbage-=cancelled;atk-=cancelled;
+      if(atk>0){this.attacks+=atk;if(this.onAttack)this.onAttack(this,atk)}
+    }
+    this.showClearEvent(lines,tspin.type,b2bBefore,perfect);
+    if(lines>0)sfx.clear(lines);if(tspin.type!=='none')sfx.tspin();
+    if(this.mode==='sprint'&&this.lines>=40){
+      this.finished=true;if(this.onFinish)this.onFinish(this,'sprint');return;
+    }
+    if(this.pendingGarbage>0){
+      const add=Math.min(8,this.pendingGarbage);this.pendingGarbage-=add;this.applyGarbage(add);
+      if(this.gameOver)return;
+    }
+    this.active=null;this.spawn();
+  }
+  showClearEvent(lines,tspin,b2bBefore,perfect){
+    let main='';
+    if(perfect)main='PERFECT CLEAR';
+    else if(tspin==='full')main=`T-SPIN${lines?` ${['','SINGLE','DOUBLE','TRIPLE'][lines]}`:''}`;
+    else if(tspin==='mini')main=`T-SPIN MINI${lines===1?' SINGLE':''}`;
+    else if(lines===4)main='TETRIS';
+    else if(lines>0)main=['','SINGLE','DOUBLE','TRIPLE'][lines];
+    if(!main)return;
+    const subs=[];if(b2bBefore&&(lines===4||(tspin!=='none'&&lines>0)))subs.push('BACK-TO-BACK');
+    if(this.combo>0)subs.push(`COMBO ${this.combo}`);
+    this.eventText=main+(subs.length?'\n'+subs.join(' · '):'');
+    if(this.onEvent)this.onEvent(this,main,subs.join(' · '));
+  }
+  receiveGarbage(n){this.pendingGarbage+=n;this.received+=n}
+  applyGarbage(n){
+    let hole=this.garbageRng.int(COLS),applied=0;
+    for(let k=0;k<n;k++){
+      // Never mutate board length before checking garbage top-out.
+      const shifted=this.board[0];
+      if(shifted.some(Boolean)){this.topOut();return applied}
+      this.board.shift();
+      if(this.garbageRng.next()<.28)hole=this.garbageRng.int(COLS);
+      const row=Array(COLS).fill('G');row[hole]=null;this.board.push(row);
+      applied++;
+    }
+    if(this.active){
+      while(collides(this.board,this.active)){
+        this.active.y--;
+        if(this.active.y<-4){this.topOut();return applied}
+      }
+    }
+    return applied;
+  }
+  update(dt){
+    if(this.gameOver||this.finished||!this.active)return;
+    this.elapsed+=dt;
+    if(this.aiControlled)return;
+    this.gravityAcc+=dt;
+    const g=this.gravityMs();
+    while(this.gravityAcc>=g){this.gravityAcc-=g;if(!this.softDrop(true))break}
+    if(grounded(this.board,this.active)){
+      this.lockAcc+=dt;if(this.lockAcc>=APP.settings.lockDelay)this.lockPiece();
+    }else this.lockAcc=0;
+  }
+  pps(){return this.elapsed>0?this.pieces/(this.elapsed/1000):0}
+  apm(){return this.elapsed>0?this.attacks/(this.elapsed/60000):0}
+}
+
+/* =========================================================
+   AI evaluation + reachable placement search
+========================================================= */
+
+function boardFeatures(board){
+  const heights=Array(COLS).fill(0),holeCounts=Array(COLS).fill(0);
+  let holes=0,holeDepth=0,covered=0,holeColumns=0;
+  for(let x=0;x<COLS;x++){
+    let seen=false,top=ROWS,colHoles=0;
+    for(let y=0;y<ROWS;y++){
+      if(board[y][x]){
+        if(!seen){seen=true;top=y}
+      }else if(seen){
+        holes++;colHoles++;holeCounts[x]++;holeDepth+=ROWS-y;
+        let blocksAbove=0;
+        for(let yy=top;yy<y;yy++)if(board[yy][x])blocksAbove++;
+        covered+=blocksAbove;
+      }
+    }
+    if(colHoles>0)holeColumns++;
+    heights[x]=seen?ROWS-top:0;
+  }
+  const aggregate=heights.reduce((a,b)=>a+b,0),maxHeight=Math.max(...heights),minHeight=Math.min(...heights);
+  let bump=0,wells=0,bestCleanWell=0,bestWellCol=-1;
+  for(let x=0;x<COLS-1;x++)bump+=Math.abs(heights[x]-heights[x+1]);
+  for(let x=0;x<COLS;x++){
+    const l=x===0?null:heights[x-1],r=x===COLS-1?null:heights[x+1];
+    const rim=l===null?r:r===null?l:Math.min(l,r);
+    const depth=Math.max(0,(rim??0)-heights[x]);
+    wells+=depth;
+    if(holeCounts[x]===0&&depth>bestCleanWell){bestCleanWell=depth;bestWellCol=x}
+  }
+  let rowTransitions=0,colTransitions=0;
+  for(let y=HIDDEN_ROWS;y<ROWS;y++){
+    let prev=1;
+    for(let x=0;x<COLS;x++){const cur=board[y][x]?1:0;if(cur!==prev)rowTransitions++;prev=cur}
+    if(prev===0)rowTransitions++;
+  }
+  for(let x=0;x<COLS;x++){
+    let prev=1;
+    for(let y=HIDDEN_ROWS;y<ROWS;y++){const cur=board[y][x]?1:0;if(cur!==prev)colTransitions++;prev=cur}
+    if(prev===0)colTransitions++;
+  }
+  return {
+    aggregate,maxHeight,minHeight,heights,holeCounts,holes,holeDepth,covered,holeColumns,
+    bump,wells,bestCleanWell,bestWellCol,rowTransitions,colTransitions
+  };
+}
+function countTSlots(board){
+  let n=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    const up=board[cy-1],mid=board[cy],down=board[cy+1];
+    for(let cx=1;cx<COLS-1;cx++){
+      if(mid[cx])continue;
+      const corners=(up[cx-1]?1:0)+(up[cx+1]?1:0)+(down[cx-1]?1:0)+(down[cx+1]?1:0);
+      if(corners>=3)n++;
+    }
+  }
+  return n;
+}
+
+function tSpinReadyGeometry(board){
+  let best=0,count=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    for(let cx=1;cx<COLS-1;cx++){
+      if(board[cy][cx])continue;
+      const tl=!!board[cy-1][cx-1],tr=!!board[cy-1][cx+1],
+            bl=!!board[cy+1][cx-1],br=!!board[cy+1][cx+1];
+      if((tl?1:0)+(tr?1:0)+(bl?1:0)+(br?1:0)<3)continue;
+      for(let rot=0;rot<4;rot++){
+        const p={type:'T',x:cx-1,y:cy-1,rot};
+        if(collides(board,p)||!grounded(board,p))continue;
+        const front=rot===0?(tl?1:0)+(tr?1:0):
+                    rot===1?(tr?1:0)+(br?1:0):
+                    rot===2?(bl?1:0)+(br?1:0):
+                            (tl?1:0)+(bl?1:0);
+        const pts=cellsOf(p);
+        let row1=pts[0][1],row2=null,row3=null;
+        for(let k=1;k<pts.length;k++){
+          const yy=pts[k][1];
+          if(yy!==row1&&row2===null)row2=yy;
+          else if(yy!==row1&&yy!==row2)row3=yy;
+        }
+        let lines=0;
+        for(const y of [row1,row2,row3]){
+          if(y===null||y<0||y>=ROWS)continue;
+          let full=true;
+          for(let x=0;x<COLS&&full;x++){
+            if(board[y][x])continue;
+            let byT=false;
+            for(let k=0;k<pts.length;k++)if(pts[k][0]===x&&pts[k][1]===y){byT=true;break}
+            if(!byT)full=false;
+          }
+          if(full)lines++;
+        }
+        if(lines<=0)continue;
+        count++;
+        const fullSpin=front===2;
+        const v=fullSpin?([0,1.25,4.2,6.8][Math.min(3,lines)]||0):.55;
+        if(v>best)best=v;
+      }
+    }
+  }
+  return {best,count};
+}
+function getTSpinReady(board,ctx={}){
+  const a=cachedBoardAnalysis(board,ctx);
+  if(a.tspinReady===undefined)a.tspinReady=tSpinReadyGeometry(board);
+  return a.tspinReady;
+}
+function tetrisReadyRows(board){
+  let best=0,bestCol=-1;
+  for(let x=0;x<COLS;x++){
+    let run=0,local=0;
+    for(let y=ROWS-1;y>=HIDDEN_ROWS;y--){
+      if(board[y][x]){run=0;continue}
+      let fullElse=true;
+      for(let cx=0;cx<COLS;cx++)if(cx!==x&&!board[y][cx]){fullElse=false;break}
+      if(fullElse){run++;if(run>local)local=run}else run=0;
+    }
+    if(local>best){best=local;bestCol=x}
+  }
+  return {rows:Math.min(4,best),col:bestCol};
+}
+function cachedBoardAnalysis(board,ctx={}){
+  const cache=ctx.analysisCache;
+  if(cache){
+    let v=cache.get(board);
+    if(v)return v;
+    v={features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+    cache.set(board,v);return v;
+  }
+  return {features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+}
+
+/*
+  AI v5 strategic overhaul
+  Style now MODIFIES a common competent baseline instead of replacing safety.
+  This is deliberate: "Aggressive" means attack harder, not forget how holes work.
+*/
+const AI_BASE={
+  height:-0.30,maxHeight:-0.68,holes:-8.0,holeDepth:-0.085,covered:-0.06,
+  bump:-0.25,wells:-0.035,rowTransitions:-0.105,colTransitions:-0.09,
+  lines:1.35,attack:3.55
+};
+const AI_STYLE={
+  balanced:{survival:1.00,attack:1.00,lines:1.00,tspin:1.00,setup:1.00,aggression:0.00},
+  aggressive:{survival:.98,attack:1.48,lines:.92,tspin:1.15,setup:1.02,aggression:1.00},
+  defensive:{survival:1.12,attack:.90,lines:1.08,tspin:.86,setup:.82,aggression:-.25},
+  tspin:{survival:1.04,attack:1.08,lines:.98,tspin:1.78,setup:1.42,aggression:.24}
+};
+
+/*
+  Level controls search quality and strategic knowledge.
+  Low levels still make mistakes; high levels gain lookahead/garbage/HOLD/tactical awareness.
+*/
+const AI_LEVEL_PROFILE={
+  1:{label:'BEGINNER',level:1,holdChance:0,depth:0,shortlist:5,beam:1,futureWeight:0,
+     attackFactor:.35,tspinFactor:0,setupFactor:0,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:0,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.78,
+     mistakeWeights:[.48,.29,.16,.07],mistakeWindow:12},
+  2:{label:'BASIC',level:2,holdChance:.55,depth:0,shortlist:6,beam:2,futureWeight:0,
+     attackFactor:.55,tspinFactor:.12,setupFactor:.06,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:.05,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.86,
+     mistakeWeights:[.72,.20,.08],mistakeWindow:8},
+  3:{label:'FOUNDATION',level:3,holdChance:1,depth:1,shortlist:7,beam:3,futureWeight:.44,
+     attackFactor:.76,tspinFactor:.38,setupFactor:.22,b2bAware:false,comboAware:false,
+     garbageAware:.05,opponentAware:0,tspinPlanning:.18,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.98,
+     mistakeWeights:[.95,.05],mistakeWindow:4.0},
+  4:{label:'LOOKAHEAD',level:4,holdChance:1,depth:1,shortlist:8,beam:4,futureWeight:.58,
+     attackFactor:.96,tspinFactor:.68,setupFactor:.42,b2bAware:true,comboAware:true,
+     garbageAware:.18,opponentAware:0,tspinPlanning:.35,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:1.8,b2bKeepBonus:.8,survival:1.00,
+     mistakeWeights:[.985,.015],mistakeWindow:2.2},
+  5:{label:'CHAIN BUILDER',level:5,holdChance:1,depth:2,shortlist:9,beam:4,futureWeight:.62,
+     attackFactor:1.00,tspinFactor:.82,setupFactor:.52,b2bAware:true,comboAware:true,
+     garbageAware:.45,opponentAware:.05,tspinPlanning:.58,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.4,b2bKeepBonus:1.2,survival:1.06,
+     mistakeWeights:null,mistakeWindow:0},
+  6:{label:'GARBAGE / HOLD',level:6,holdChance:1,depth:2,shortlist:10,beam:4,futureWeight:.67,
+     attackFactor:1.05,tspinFactor:.95,setupFactor:.68,b2bAware:true,comboAware:true,
+     garbageAware:1.0,opponentAware:.15,tspinPlanning:.78,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.8,b2bKeepBonus:1.5,survival:1.12,
+     mistakeWeights:null,mistakeWindow:0},
+  7:{label:'TACTICAL',level:7,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.71,
+     attackFactor:1.08,tspinFactor:1.08,setupFactor:.88,b2bAware:true,comboAware:true,
+     garbageAware:1.10,opponentAware:.28,tspinPlanning:1.05,tacticalT:true,tacticalReadiness:true,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:3.2,b2bKeepBonus:1.9,survival:1.16,
+     mistakeWeights:null,mistakeWindow:0},
+  8:{label:'VS TACTICS',level:8,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.72,
+     attackFactor:1.12,tspinFactor:1.16,setupFactor:1.00,b2bAware:true,comboAware:true,
+     garbageAware:1.25,opponentAware:1.0,tspinPlanning:1.22,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:3.6,b2bKeepBonus:2.2,survival:1.20,
+     mistakeWeights:null,mistakeWindow:0},
+  9:{label:'EXPERT',level:9,holdChance:1,depth:3,shortlist:10,beam:2,futureWeight:.74,
+     attackFactor:1.16,tspinFactor:1.24,setupFactor:1.12,b2bAware:true,comboAware:true,
+     garbageAware:1.38,opponentAware:1.45,tspinPlanning:1.38,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:4.0,b2bKeepBonus:2.5,survival:1.24,
+     mistakeWeights:null,mistakeWindow:0}
+};
+function getAIProfile(level){return AI_LEVEL_PROFILE[clamp(Math.round(+level||1),1,9)]}
+
+function simulateLock(board,p,lastWasRotate=false,lastKickIndex=0){
+  const b=deepBoard(board),t=detectTSpin(b,p,lastWasRotate,lastKickIndex);
+  for(const [x,y] of cellsOf(p)){if(y>=0&&y<ROWS&&x>=0&&x<COLS)b[y][x]=p.type}
+  const lines=clearCompletedLines(b);
+  return {board:b,lines,tspin:t.type,perfect:b.every(r=>r.every(v=>!v))};
+}
+function boardSignature(board){
+  let s='';
+  for(let y=0;y<ROWS;y++){
+    let mask=0;
+    for(let x=0;x<COLS;x++)if(board[y][x])mask|=(1<<x);
+    s+=mask.toString(36)+'.';
+  }
+  return s;
+}
+function chainAfter(ctx,result){
+  const difficult=result.lines===4||(result.tspin!=='none'&&result.lines>0);
+  const comboAfter=result.lines>0?(ctx.combo??-1)+1:-1;
+  let b2bAfter=!!ctx.b2b;
+  if(difficult)b2bAfter=true;
+  else if(result.lines>0)b2bAfter=false;
+  return {b2b:b2bAfter,combo:comboAfter,difficult};
+}
+function boardDanger(features){
+  const height=clamp((features.maxHeight-9)/11,0,1);
+  const holes=clamp(features.holes/10,0,1);
+  const rough=clamp(features.bump/32,0,1);
+  return clamp(height*.62+holes*.30+rough*.08,0,1);
+}
+function tSpinResultValue(result){
+  if(result.tspin==='none')return 0;
+  if(result.lines===0)return 0; // 0-line MINI is not an achievement.
+  if(result.tspin==='mini')return result.lines===1?.55:.25;
+  return [0,1.25,3.25,5.7][Math.min(3,result.lines)]||0;
+}
+function strategicShortlist(scored,limit,profile){
+  if(!profile.categoryBeam)return scored.slice(0,limit);
+  const out=[],seen=new Set();
+  const add=c=>{if(!c||seen.has(c))return;seen.add(c);out.push(c)};
+  const take=(arr,n=1)=>{for(let i=0;i<Math.min(n,arr.length)&&out.length<limit;i++)add(arr[i])};
+  take(scored,Math.max(3,Math.ceil(limit*.50)));
+  const by=(fn,desc=false)=>scored.slice().sort((a,b)=>desc?fn(b)-fn(a):fn(a)-fn(b));
+  take(by(c=>c.analysis.features.holes),1);
+  take(by(c=>c.analysis.features.maxHeight),1);
+  take(by(c=>c.analysis.attack,true),2);
+  take(by(c=>c.analysis.tetrisReady,true),1);
+  take(by(c=>c.analysis.setupScore,true),2);
+  take(by(c=>c.result.lines,true),1);
+  for(const c of scored){if(out.length>=limit)break;add(c)}
+  return out;
+}
+
+const ML_FEATURE_COUNT=44;
+const OVERLAY_FEATURE_COUNT=24;
+function mlFeaturesForEval({bf,f,result,actualAttack,newHoles,filledHoles,heightRise,heightDrop,tr,tspinReady,chain,incoming,selfDanger,oppDanger}){
+  const ts=result.tspin==='full'?1:(result.tspin==='mini'?.45:0);
+  const core=[
+    1,
+    f.maxHeight/24,
+    Math.min(1,f.holes/20),
+    Math.min(1,f.holeDepth/60),
+    Math.min(1,f.aggregate/120),
+    Math.min(1,f.bump/50),
+    Math.min(1,f.wells/40),
+    Math.min(1,f.rowTransitions/80),
+    Math.min(1,f.colTransitions/80),
+    Math.min(1,(f.bestCleanWell||0)/8),
+    result.lines/4,
+    Math.min(1,actualAttack/12),
+    ts,
+    result.perfect?1:0,
+    Math.min(1,newHoles/6),
+    Math.min(1,filledHoles/6),
+    Math.min(1,heightRise/8),
+    Math.min(1,heightDrop/8),
+    Math.min(1,tr/4),
+    Math.min(1,tspinReady/4),
+    chain.b2b?1:0,
+    Math.min(1,Math.max(0,chain.combo)/8),
+    Math.min(1,incoming/12),
+    Math.max(-1,Math.min(1,oppDanger-selfDanger))
+  ];
+  // V2: retain the 24 legacy features first so old models/overlay stay compatible,
+  // then add column-wise geometry for the NN only.
+  const colHeights=(f.heights||Array(10).fill(0)).map(v=>Math.max(0,Math.min(1,v/24)));
+  const colHoles=(f.holeCounts||Array(10).fill(0)).map(v=>Math.max(0,Math.min(1,v/8)));
+  return core.concat(colHeights,colHoles);
+}
+function mlPredict(model,x){
+  if(!model||!Array.isArray(model.w1)||!Array.isArray(model.w2))return 0;
+  const h=model.hidden|0,inp=model.input|0;
+  if(inp<=0||inp>x.length||h<=0)return 0;
+  const z=new Array(h);
+  for(let j=0;j<h;j++){
+    let s=(model.b1&&model.b1[j])||0,off=j*inp;
+    for(let i=0;i<inp;i++)s+=model.w1[off+i]*x[i];
+    z[j]=Math.tanh(s);
+  }
+  let y=(model.b2&&model.b2[0])||0;
+  for(let j=0;j<h;j++)y+=model.w2[j]*z[j];
+  return Math.tanh(y);
+}
+function linearOverlayScore(w,x){
+  if(!Array.isArray(w)||!w.length)return 0;
+  let s=0,n=Math.min(w.length,x.length);
+  for(let i=0;i<n;i++)s+=(+w[i]||0)*x[i];
+  return s;
+}
+
+function aiEvaluate(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  const style=AI_STYLE[styleName]||AI_STYLE.balanced;
+  const beforeA=cachedBoardAnalysis(board,ctx),afterA=cachedBoardAnalysis(result.board,ctx);
+  const bf=beforeA.features,f=afterA.features;
+  const chain=chainAfter(ctx,result);
+  const actualAttack=attackFor(result.lines,result.tspin,!!ctx.b2b,chain.combo,result.perfect);
+  const perceivedAttack=attackFor(
+    result.lines,result.tspin,
+    profile.b2bAware?!!ctx.b2b:false,
+    profile.comboAware?chain.combo:0,
+    result.perfect
+  );
+  const incoming=Math.max(0,ctx.pendingGarbage||0);
+  const beforeDanger=boardDanger(bf),selfDanger=boardDanger(f);
+  const panic=(bf.maxHeight>=15||bf.holes>=7||incoming>=5);
+  const critical=(bf.maxHeight>=18||bf.holes>=11||incoming>=9);
+  const survivalScale=profile.survival*style.survival*(1+(panic?.55:0)+(critical?.70:0));
+  const newHoles=Math.max(0,f.holes-bf.holes),filledHoles=Math.max(0,bf.holes-f.holes);
+  const heightRise=Math.max(0,f.maxHeight-bf.maxHeight);
+  const heightDrop=Math.max(0,bf.maxHeight-f.maxHeight);
+
+  // Static board quality: counted strongly at root/leaf, not repeatedly at every future ply.
+  let staticScore=
+    f.aggregate*AI_BASE.height*survivalScale+
+    f.maxHeight*AI_BASE.maxHeight*survivalScale+
+    f.holes*AI_BASE.holes*survivalScale+
+    f.holeDepth*AI_BASE.holeDepth*survivalScale+
+    f.covered*AI_BASE.covered*survivalScale+
+    f.bump*AI_BASE.bump+f.wells*AI_BASE.wells+
+    f.rowTransitions*AI_BASE.rowTransitions+f.colTransitions*AI_BASE.colTransitions;
+
+  if(f.maxHeight>12)staticScore-=Math.pow(f.maxHeight-12,2)*.52*profile.survival*style.survival;
+  if(f.maxHeight>=17)staticScore-=Math.pow(f.maxHeight-16,2)*1.65*profile.survival*style.survival;
+  if(f.maxHeight>=20)staticScore-=18*profile.survival*style.survival;
+  if(f.holes>=8)staticScore-=Math.pow(f.holes-7,1.35)*1.15*profile.survival*style.survival;
+
+  let transitionScore=0;
+
+  // Damage / repair of the current move.
+  transitionScore-=newHoles*(4.9+1.9*profile.survival)*style.survival;
+  transitionScore+=filledHoles*(2.35+.75*profile.garbageAware);
+  transitionScore-=heightRise*(panic?2.6:.52)*style.survival;
+  transitionScore+=heightDrop*(panic?1.35:.28);
+
+  // Ordinary clears are useful under pressure. At low danger, zero-attack singles are "burns".
+  const clearScale=style.lines*(1+beforeDanger*1.05);
+  transitionScore+=result.lines*AI_BASE.lines*clearScale;
+  const skill=clamp((profile.level-2)/7,0,1);
+  if(result.lines===1&&actualAttack===0&&incoming===0&&filledHoles===0&&beforeDanger<.48){
+    transitionScore-=(.35+2.35*skill)*(styleName==='defensive'?.82:1);
+  }else if(result.lines===2&&actualAttack<=1&&incoming===0&&beforeDanger<.35){
+    transitionScore-=.25*skill;
+  }
+  if(result.lines===0&&bf.maxHeight>=12){
+    transitionScore-=(bf.maxHeight-11)*(.48+(panic?.60:0))*style.survival;
+  }
+
+  // Attack. Aggressive gets extra payoff only while healthy.
+  let attackScale=AI_BASE.attack*profile.attackFactor*style.attack;
+  if(style.aggression>0&&selfDanger<.58)attackScale*=1+style.aggression*.18;
+  if(selfDanger>.72)attackScale*=.70;
+  transitionScore+=perceivedAttack*attackScale;
+  if(actualAttack>=3&&selfDanger<.58){
+    transitionScore+=Math.pow(actualAttack-2,1.25)*.85*profile.attackFactor*style.attack;
+  }
+
+  // T-Spin: line-aware. A 0-line MINI receives no tactical reward.
+  const tsValue=tSpinResultValue(result);
+  transitionScore+=tsValue*4.6*profile.tspinFactor*style.tspin;
+
+  // Strategic setup is valuable only while the board is safe.
+  const queue=ctx.queue||[];
+  const tIndex=queue.indexOf('T'),iIndex=queue.indexOf('I');
+  const tNear=ctx.hold==='T'?1:(tIndex<0?.10:[1,.80,.57,.36,.22][Math.min(tIndex,4)]);
+  const iNear=ctx.hold==='I'?1:(iIndex<0?.12:[1,.84,.63,.43,.27][Math.min(iIndex,4)]);
+  const tAvailableSoon=ctx.hold==='T'||(tIndex>=0&&tIndex<=2);
+  const setupHeightGate=clamp((15-bf.maxHeight)/7,0,1);
+  const setupHoleGate=clamp((6-bf.holes)/6,0,1);
+  const setupSafety=(critical?0:panic?.06:clamp(1-selfDanger*.78,.20,1))*setupHeightGate*setupHoleGate;
+  const slotDelta=afterA.slots-beforeA.slots;
+  const tr=afterA.tetrisReady.rows;
+  const wellBefore=Math.min(4,bf.bestCleanWell||0),wellAfter=Math.min(4,f.bestCleanWell||0);
+  let setupScore=0;
+
+  // A clean common well is intentional structure, not generic roughness.
+  setupScore+=Math.max(0,wellAfter-wellBefore)*.90*iNear;
+  setupScore+=wellAfter*.30*iNear;
+  if(tr>0)setupScore+=tr*.90*iNear;
+  if(tr>=4)setupScore+=3.2*iNear;
+
+  // T slot preservation is modest unless a T is close.
+  let tspinReady=0;
+  if(profile.tacticalReadiness){
+    // A raw three-corner "slot" is only a weak hint. Real reward requires a line-clearing T-spin geometry.
+    setupScore+=Math.max(0,slotDelta)*.08*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.05;
+    if(setupSafety>.12&&tAvailableSoon&&(afterA.slots>0||beforeA.slots>0)){
+      const beforeReady=beforeA.slots>0?getTSpinReady(board,ctx).best:0;
+      const afterReady=afterA.slots>0?getTSpinReady(result.board,ctx).best:0;
+      tspinReady=afterReady;
+      setupScore+=(afterReady-beforeReady)*1.75+afterReady*.38;
+    }
+  }else{
+    setupScore+=Math.max(0,slotDelta)*.38*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.10;
+  }
+
+  // Don't burn a developed well for a harmless low-stack single.
+  if(result.lines===1&&actualAttack===0&&beforeDanger<.42&&wellBefore>=2&&wellAfter<wellBefore){
+    transitionScore-=(wellBefore-wellAfter)*1.15*skill;
+  }
+
+  transitionScore+=setupScore*profile.setupFactor*style.setup*setupSafety*profile.tspinPlanning;
+  if(styleName==='tspin'&&result.lines===0&&bf.maxHeight>=9&&tspinReady<=0&&tr<3){
+    transitionScore-=(bf.maxHeight-8)*.75;
+  }
+
+  // B2B / combo.
+  if(profile.b2bAware){
+    if(ctx.b2b&&result.lines>0&&!chain.difficult&&!panic)transitionScore-=profile.b2bBreakPenalty;
+    if(ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*(1+selfDanger*.25);
+    if(!ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*.35;
+  }
+  if(profile.comboAware){
+    if(ctx.combo>=1&&result.lines===0&&!panic)transitionScore-=Math.min(2.4,ctx.combo*.28);
+    if(chain.combo>=2&&result.lines>0)transitionScore+=Math.min(3.0,chain.combo*.27);
+  }
+
+  // Garbage handling.
+  if(profile.garbageAware>0&&incoming>0){
+    const cancelled=Math.min(incoming,actualAttack),remain=incoming-cancelled;
+    transitionScore+=cancelled*3.35*profile.garbageAware;
+    transitionScore-=remain*.32*profile.garbageAware;
+    if(remain>0&&f.maxHeight>10)transitionScore-=(f.maxHeight-10)*remain*.16*profile.garbageAware;
+    if(filledHoles>0)transitionScore+=filledHoles*.95*profile.garbageAware;
+  }
+
+  // Opponent pressure: finish only when self-board is healthy.
+  let oppDanger=0;
+  if(profile.opponentAware>0&&ctx.opponentFeatures){
+    oppDanger=boardDanger(ctx.opponentFeatures);
+    const oppPending=Math.max(0,ctx.opponentPending||0);
+    if(selfDanger<.65){
+      transitionScore+=actualAttack*oppDanger*3.35*profile.opponentAware;
+      transitionScore+=actualAttack*Math.min(12,oppPending)*.085*profile.opponentAware;
+      if(oppDanger>.72)transitionScore+=actualAttack*actualAttack*.32*profile.opponentAware;
+    }
+  }
+
+  const mlFeatures=mlFeaturesForEval({
+    bf,f,result,actualAttack,newHoles,filledHoles,heightRise,heightDrop,tr,tspinReady,
+    chain,incoming,selfDanger,oppDanger
+  });
+  const overlayScore=linearOverlayScore(ctx.overlay,mlFeatures)*(ctx.overlayScale==null?2.0:+ctx.overlayScale);
+  const learnedValue=mlPredict(ctx.mlModel,mlFeatures);
+  const learnedScore=learnedValue*(ctx.mlScale==null?6.0:+ctx.mlScale);
+  const score=staticScore+transitionScore+overlayScore+learnedScore;
+  return {
+    score,staticScore,transitionScore,attack:actualAttack,perceivedAttack,features:f,
+    slots:afterA.slots,slotDelta,tetrisReady:tr,tspinReady,setupScore,
+    selfDanger,oppDanger,b2bAfter:chain.b2b,comboAfter:chain.combo,difficult:chain.difficult,
+    mlFeatures,overlayScore,learnedValue,learnedScore
+  };
+}
+function aiScore(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  return aiEvaluate(board,result,styleName,ctx,profile).score;
+}
+
+function createReachabilitySearch(board,start){
+  return {
+    board,
+    q:[{p:{...start},parent:-1,action:null,depth:0,lastRotate:false,kickIndex:0}],
+    head:0,seen:new Set(),out:[],done:false
+  };
+}
+function stepReachabilitySearch(search,deadline=Infinity){
+  const {board,q,seen,out}=search;
+  const keyOf=(p,lr,ki=0)=>`${p.x},${p.y},${p.rot},${lr?1:0},${lr?ki:0}`;
+  while(search.head<q.length&&performance.now()<deadline){
+    const curIdx=search.head++,cur=q[curIdx],k=keyOf(cur.p,cur.lastRotate,cur.kickIndex);
+    if(seen.has(k))continue;seen.add(k);
+    if(cur.depth>60)continue;
+    if(grounded(board,cur.p))out.push(curIdx);
+    const moves=[
+      ['left',()=>({piece:{...cur.p,x:cur.p.x-1},kickIndex:0})],
+      ['right',()=>({piece:{...cur.p,x:cur.p.x+1},kickIndex:0})],
+      ['down',()=>({piece:{...cur.p,y:cur.p.y+1},kickIndex:0})],
+      ['cw',()=>{const r=tryRotateOn(board,cur.p,1);return r?{piece:r.piece,kickIndex:r.kickIndex}:null}],
+      ['ccw',()=>{const r=tryRotateOn(board,cur.p,-1);return r?{piece:r.piece,kickIndex:r.kickIndex}:null}]
+    ];
+    for(const [a,fn] of moves){
+      const r=fn();if(!r||collides(board,r.piece))continue;
+      q.push({p:r.piece,parent:curIdx,action:a,depth:cur.depth+1,lastRotate:a==='cw'||a==='ccw',kickIndex:r.kickIndex||0});
+    }
+  }
+  if(search.head>=q.length)search.done=true;
+  return search.done;
+}
+function reconstructReachPath(q,idx){
+  const path=[];
+  while(idx>=0){
+    const n=q[idx];
+    if(n.action)path.push(n.action);
+    idx=n.parent;
+  }
+  path.reverse();
+  return path;
+}
+function finishReachabilitySearch(search){
+  const unique=new Map(),q=search.q;
+  for(const idx of search.out){
+    const c=q[idx];
+    const k=`${c.p.x},${c.p.y},${c.p.rot},${c.lastRotate?1:0}`;
+    const prev=unique.get(k);
+    if(!prev||c.depth<prev.depth){
+      unique.set(k,{
+        p:c.p,path:reconstructReachPath(q,idx),
+        lastRotate:c.lastRotate,kickIndex:c.kickIndex||0
+      });
+    }
+  }
+  return [...unique.values()];
+}
+function reachablePlacements(board,start){
+  const search=createReachabilitySearch(board,start);
+  while(!search.done)stepReachabilitySearch(search,Infinity);
+  return finishReachabilitySearch(search);
+}
+
+function fastDropPlacements(board,type){
+  const out=[],seen=new Set();
+  for(let r=0;r<4;r++)for(let x=-2;x<COLS+2;x++){
+    let p={type,x,y:0,rot:r};if(collides(board,p))continue;p=dropY(board,p);
+    if(collides(board,p))continue;
+    const sig=cellsOf(p).map(([cx,cy])=>`${cx},${cy}`).sort().join('|');
+    if(seen.has(sig))continue;seen.add(sig);
+    out.push({p,path:[],lastRotate:false,kickIndex:0});
+  }
+  return out;
+}
+
+function tacticalTPlacements(board){
+  /*
+    Cheap future-T tactical search.
+    Full reachablePlacements() is used for the CURRENT piece. For a future T,
+    this explores hard-drop approaches plus a final SRS rotation from 0-2 cells
+    above the resting point. It catches the common T-Spin tuck/kick patterns
+    without running another full BFS inside every beam-search branch.
+  */
+  const out=[],seen=new Set();
+  const add=(p,lastRotate=false,kickIndex=0)=>{
+    if(!p||collides(board,p)||!grounded(board,p))return;
+    const sig=cellsOf(p).map(([x,y])=>`${x},${y}`).sort().join('|')+`/${lastRotate?1:0}/${lastRotate?kickIndex:0}`;
+    if(seen.has(sig))return;seen.add(sig);
+    out.push({p,path:[],lastRotate,kickIndex});
+  };
+  for(let rot=0;rot<4;rot++)for(let x=-2;x<COLS+2;x++){
+    let base={type:'T',x,y:0,rot};
+    if(collides(board,base))continue;
+    base=dropY(board,base);
+    add(base,false,0);
+    for(let lift=0;lift<=2;lift++){
+      const pre={...base,y:base.y-lift};
+      if(collides(board,pre))continue;
+      for(const dir of [-1,1]){
+        const r=tryRotateOn(board,pre,dir);
+        if(r)add(r.piece,true,r.kickIndex||0);
+      }
+    }
+  }
+  return out;
+}
+class TetrisAI{
+  constructor(game,{level=5,pps=1.35,style='balanced',seed=1,mlModel=null,mlScale=1,overlay=null,overlayScale=2}={}){
+    this.game=game;this.game.aiControlled=true;
+    this.level=clamp(Math.round(+level||5),1,9);this.profile=getAIProfile(this.level);
+    this.pps=clamp(+pps||1.35,.2,6);this.style=style;
+    this.mlModel=mlModel;this.mlScale=+mlScale||0;this.overlay=overlay;this.overlayScale=+overlayScale||0;
+    this.rng=new PRNG((seed^0xA531)>>>0);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.pieceClock=0;this.placeAt=0;this.actionDelay=20;this.lastPieceCount=-1;
+
+    this.planning=false;this.planningPhase='idle';this.planDepth=0;this.planSerial=0;
+    this.scenarios=[];this.scenarioIndex=0;this.rootSearch=null;
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];this.shortlistAccum=[];
+    this.planWork=[];this.planWorkIndex=0;this.futureCache=new Map();this.analysisCache=new WeakMap();
+  }
+  onSpawn(){
+    this.pieceClock=0;
+    // Intelligence and placement speed are intentionally independent.
+    this.placeAt=(1000/this.pps)*this.rng.range(.88,1.12);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.lastPieceCount=this.game.pieces;
+    this.beginPlan();
+  }
+  context(queue=this.game.queue){
+    const g=this.game,o=g.opponent&&!g.opponent.gameOver?g.opponent:null;
+    return {
+      b2b:g.b2b,combo:g.combo,pendingGarbage:g.pendingGarbage,queue:queue.slice(),hold:g.hold,
+      opponentFeatures:o?boardFeatures(o.board):null,opponentPending:o?o.pendingGarbage:0,
+      analysisCache:this.analysisCache,mlModel:this.mlModel,mlScale:this.mlScale,
+      overlay:this.overlay,overlayScale:this.overlayScale
+    };
+  }
+  candidateSetFor(type,board=this.game.board,start=null,ctx=this.context()){
+    // Synchronous helper retained for tests/debug. Normal gameplay uses the incremental root search.
+    const s=start||{type,x:3,y:1,rot:0};
+    const arr=reachablePlacements(board,s);
+    return arr.map(c=>{
+      const result=simulateLock(board,c.p,c.lastRotate,c.kickIndex);
+      const analysis=aiEvaluate(board,result,this.style,ctx,this.profile);
+      return {...c,result,analysis,score:analysis.score};
+    });
+  }
+
+  nextContext(ctx,result,nextQueue,holdOverride=ctx.hold){
+    const chain=chainAfter(ctx,result);
+    return {...ctx,b2b:chain.b2b,combo:chain.combo,hold:holdOverride,pendingGarbage:0,queue:nextQueue.slice()};
+  }
+  futurePlacements(board,type,depth){
+    // High levels must keep SRS/T-spin legality even when T is 2-3 plies away.
+    if(this.profile.tacticalT&&type==='T')return tacticalTPlacements(board);
+    return fastDropPlacements(board,type);
+  }
+  futureActions(queue,ctx){
+    if(!queue.length)return [];
+    const cur=queue[0],out=[{type:cur,nextQueue:queue.slice(1),holdAfter:ctx.hold,usedHold:false}];
+    if(!this.profile.futureHold)return out;
+    const strategic=t=>t==='I'||t==='T';
+    if(ctx.hold){
+      if(strategic(ctx.hold)||strategic(cur)){
+        out.push({type:ctx.hold,nextQueue:queue.slice(1),holdAfter:cur,usedHold:true});
+      }
+    }else if(queue.length>=2&&(strategic(cur)||strategic(queue[1]))){
+      out.push({type:queue[1],nextQueue:queue.slice(2),holdAfter:cur,usedHold:true});
+    }
+    return out;
+  }
+  futureValue(board,queue,depth,ctx){
+    if(depth<=0||queue.length===0)return 0;
+    const cacheKey=`${depth}|${queue.slice(0,depth+1).join('')}|H:${ctx.hold||'-'}|${ctx.b2b?1:0}|${ctx.combo}|${boardSignature(board)}`;
+    const cached=this.futureCache.get(cacheKey);if(cached!==undefined)return cached;
+    let scored=[];
+    for(const action of this.futureActions(queue,ctx)){
+      const cand=this.futurePlacements(board,action.type,depth);
+      for(const c of cand){
+        const result=simulateLock(board,c.p,!!c.lastRotate,c.kickIndex||0);
+        const localCtx={...ctx,hold:action.holdAfter,queue:action.nextQueue.slice()};
+        const analysis=aiEvaluate(board,result,this.style,localCtx,this.profile);
+        scored.push({
+          result,analysis,score:analysis.score-(action.usedHold?.02:0),
+          nextQueue:action.nextQueue,holdAfter:action.holdAfter
+        });
+      }
+    }
+    if(!scored.length){this.futureCache.set(cacheKey,-999);return -999}
+    scored.sort((a,b)=>b.score-a.score);
+    scored=scored.slice(0,this.profile.beam);
+    let best=-Infinity;
+    for(const c of scored){
+      let v=c.analysis.transitionScore+(depth<=1?c.analysis.staticScore:0);
+      if(depth>1){
+        const nctx=this.nextContext(ctx,c.result,c.nextQueue,c.holdAfter);
+        v+=this.profile.futureWeight*this.futureValue(c.result.board,c.nextQueue,depth-1,nctx);
+      }
+      if(v>best)best=v;
+    }
+    this.futureCache.set(cacheKey,best);return best;
+  }
+  shouldConsiderHold(){
+    if(this.game.holdUsed||this.profile.holdChance<=0)return false;
+    if(this.profile.holdChance>=1)return true;
+    return this.rng.next()<this.profile.holdChance;
+  }
+  buildScenarios(){
+    const g=this.game,normalQueue=g.queue.slice();
+    const scenarios=[{hold:false,type:g.active.type,start:{...g.active},futureQueue:normalQueue,ctx:this.context(normalQueue)}];
+    if(this.shouldConsiderHold()){
+      const alt=g.hold!==null?g.hold:g.queue[0];
+      const futureQueue=g.hold===null?g.queue.slice(1):g.queue.slice();
+      scenarios.push({
+        hold:true,type:alt,start:{type:alt,x:3,y:1,rot:0},futureQueue,
+        ctx:{...this.context(futureQueue),hold:g.active.type}
+      });
+    }
+    return scenarios;
+  }
+  startScenarioSearch(){
+    if(this.scenarioIndex>=this.scenarios.length){
+      this.finishRootGeneration();return;
+    }
+    const sc=this.scenarios[this.scenarioIndex];
+    this.rootSearch=createReachabilitySearch(this.game.board,sc.start);
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];
+    this.planningPhase='root-search';
+  }
+  finishRootGeneration(){
+    this.planWork=this.shortlistAccum.sort((a,b)=>b.baseScore-a.baseScore);
+    this.planWorkIndex=0;this.planDepth=this.profile.depth;
+    if(!this.planWork.length){this.finishPlan();return}
+    if(this.planDepth===0){
+      for(const c of this.planWork)c.score=c.baseScore-(c.hold?.05:0);
+      this.planWorkIndex=this.planWork.length;this.finishPlan();return;
+    }
+    this.planningPhase='future';
+  }
+  beginPlan(){
+    const g=this.game;if(!g.active){this.planning=false;this.planningPhase='idle';return}
+    this.planSerial++;this.futureCache.clear();this.analysisCache=new WeakMap();
+    this.scenarios=this.buildScenarios();this.scenarioIndex=0;
+    this.shortlistAccum=[];this.planWork=[];this.planWorkIndex=0;
+    this.planning=true;this.startScenarioSearch();
+  }
+  processPlanning(budgetMs=1.8){
+    if(!this.planning)return;
+    const deadline=performance.now()+Math.max(.25,budgetMs);
+
+    while(this.planning&&performance.now()<deadline){
+      if(this.planningPhase==='root-search'){
+        stepReachabilitySearch(this.rootSearch,deadline);
+        if(!this.rootSearch.done)return;
+        this.rootPlacements=finishReachabilitySearch(this.rootSearch);
+        this.rootScoreIndex=0;this.rootScored=[];
+        this.planningPhase='root-score';
+        continue;
+      }
+
+      if(this.planningPhase==='root-score'){
+        const sc=this.scenarios[this.scenarioIndex];
+        while(this.rootScoreIndex<this.rootPlacements.length&&performance.now()<deadline){
+          const c=this.rootPlacements[this.rootScoreIndex++];
+          const result=simulateLock(this.game.board,c.p,c.lastRotate,c.kickIndex);
+          const analysis=aiEvaluate(this.game.board,result,this.style,sc.ctx,this.profile);
+          this.rootScored.push({...c,result,analysis,score:analysis.score});
+        }
+        if(this.rootScoreIndex<this.rootPlacements.length)return;
+
+        this.rootScored.sort((a,b)=>b.score-a.score);
+        for(const c of strategicShortlist(this.rootScored,this.profile.shortlist,this.profile)){
+          this.shortlistAccum.push({
+            ...c,hold:sc.hold,type:sc.type,futureQueue:sc.futureQueue,
+            baseScore:c.score,score:c.score,ctx:sc.ctx
+          });
+        }
+        this.scenarioIndex++;
+        if(this.scenarioIndex<this.scenarios.length){
+          this.startScenarioSearch();continue;
+        }
+        this.finishRootGeneration();
+        continue;
+      }
+
+      if(this.planningPhase==='future'){
+        if(this.planWorkIndex>=this.planWork.length){this.finishPlan();return}
+        const c=this.planWork[this.planWorkIndex++];
+        const rootStaticWeight=this.profile.level<=3?.78:this.profile.level<=4?.66:this.profile.level<=6?.52:.40;
+        let score=c.analysis.transitionScore+c.analysis.staticScore*rootStaticWeight;
+        const nctx=this.nextContext(c.ctx,c.result,c.futureQueue);
+        score+=this.profile.futureWeight*this.futureValue(
+          c.result.board,c.futureQueue,this.planDepth,nctx
+        );
+        if(c.hold)score-=.05;
+        c.score=score;
+        continue;
+      }
+
+      return;
+    }
+  }
+  pickIndex(all){
+    const weights=this.profile.mistakeWeights;
+    if(!weights||all.length<2)return 0;
+    const best=all[0].score;
+    const eligible=all.filter(c=>c.score>=best-this.profile.mistakeWindow).slice(0,weights.length);
+    if(eligible.length<=1)return 0;
+    const w=weights.slice(0,eligible.length),sum=w.reduce((a,b)=>a+b,0);
+    let r=this.rng.next()*sum;
+    for(let i=0;i<w.length;i++){r-=w[i];if(r<=0)return i}
+    return 0;
+  }
+  finishPlan(){
+    const g=this.game,all=this.planWork||[];
+    all.sort((a,b)=>b.score-a.score);
+    g.lastCandidates=all.slice(0,10);
+    if(!all.length){
+      this.plan=null;this.planning=false;this.planningPhase='idle';return;
+    }
+    const idx=this.pickIndex(all),pick=all[Math.min(idx,all.length-1)];
+    this.plan={
+      hold:pick.hold,path:pick.path,target:pick.p,score:pick.score,
+      result:pick.result,analysis:pick.analysis,rank:idx+1,type:pick.type,
+      lastRotate:!!pick.lastRotate,kickIndex:pick.kickIndex||0
+    };
+    this.planning=false;this.planningPhase='idle';this.actionIndex=0;this.actionAcc=0;
+    const steps=Math.max(1,this.plan?.path?.length||1);
+    this.actionDelay=clamp((this.placeAt*.72)/steps,8,50);
+    g.aiThought=this.describe(this.plan);
+  }
+  describe(p){
+    const a=p.analysis||aiEvaluate(this.game.board,p.result,this.style,this.context(),this.profile);
+    const tag=p.result.tspin!=='none'?` / ${p.result.tspin==='full'?'T-SPIN':'MINI'}`:'';
+    const vs=this.profile.opponentAware>0?` / opp ${(a.oppDanger*100).toFixed(0)}%`:'';
+    return `Lv.${this.level} ${this.profile.label}\n目標: ${p.type} x=${p.target.x} r=${p.target.rot}${tag}\n評価 ${p.score.toFixed(2)} / ATK ${a.attack} / holes ${a.features.holes} / H ${a.features.maxHeight}\nTetrisReady ${a.tetrisReady||0} / TSpinReady ${(a.tspinReady||0).toFixed(1)} / danger ${(a.selfDanger*100).toFixed(0)}%${vs}`;
+  }
+  update(dt){
+    const g=this.game;if(g.gameOver||g.finished||!g.active)return;
+    if(this.lastPieceCount!==g.pieces)this.onSpawn();
+    this.pieceClock+=dt;
+    if(this.planning){
+      // Search, root scoring, and future lookahead are all time-sliced.
+      const budget=APP.mode==='cpu_cpu'?1.10:1.55;
+      this.processPlanning(budget);
+      if(this.planning)return;
+    }
+    if(!this.plan){this.beginPlan();if(this.planning||!this.plan)return}
+    this.actionAcc+=dt;
+    if(this.plan.hold){
+      if(this.actionAcc>=Math.min(55,this.actionDelay)){
+        APP.dispatch(g,'hold',true,true);this.plan.hold=false;this.actionAcc=0;
+      }else return;
+    }
+    while(this.actionIndex<this.plan.path.length){
+      if(this.actionAcc<this.actionDelay)break;
+      this.actionAcc-=this.actionDelay;
+      const a=this.plan.path[this.actionIndex++];
+      APP.dispatch(g,a,true,true);
+    }
+    if(this.actionIndex>=this.plan.path.length&&this.pieceClock>=this.placeAt){
+      APP.dispatch(g,'hard',true,true);this.plan=null;
+      if(!g.gameOver&&!g.finished)this.onSpawn();
+    }
+  }
+}
+
+sfx.enabled=false;
+const APP={
+  mode:'cpu_cpu',
+  settings:{lockDelay:500},
+  dispatch(game,action,record=false,fromAI=true){
+    if(!game||game.gameOver||game.finished)return false;
+    if(action==='left')return game.move(-1,fromAI);
+    if(action==='right')return game.move(1,fromAI);
+    if(action==='down')return game.softDrop(fromAI);
+    if(action==='cw')return game.rotate(1,fromAI);
+    if(action==='ccw')return game.rotate(-1,fromAI);
+    if(action==='hard')return game.hardDrop(fromAI);
+    if(action==='hold')return game.doHold();
+    return false;
+  }
+};
+
+function mix32(x){
+  x=(x+0x9E3779B9)>>>0;
+  x=Math.imul(x^(x>>>16),0x21f0aaad);
+  x=Math.imul(x^(x>>>15),0x735a2d97);
+  return (x^(x>>>15))>>>0;
+}
+function planNow(ai){
+  if(!ai.planning&&!ai.plan)ai.beginPlan();
+  let guard=0;
+  while(ai.planning){
+    ai.processPlanning(Infinity);
+    if(++guard>100000)throw new Error('AI planning guard exceeded');
+  }
+  if(!ai.plan)throw new Error('AI failed to produce a plan');
+  return ai.plan;
+}
+function scheduleDelay(ai){
+  const p=ai.plan;
+  const pathLen=p&&p.path?p.path.length:0;
+  const holdDelay=p&&p.hold?Math.min(55,ai.actionDelay):0;
+  const pathDelay=pathLen*ai.actionDelay;
+  return Math.max(ai.placeAt,holdDelay+pathDelay);
+}
+function boardRows(board){
+  return board.slice(HIDDEN_ROWS).map(row=>row.map(v=>v||'.').join(''));
+}
+function fullBoardRows(board){
+  return board.map(row=>row.map(v=>v||'.').join(''));
+}
+function blankExtra(){
+  return {
+    singles:0,doubles:0,triples:0,tetrises:0,
+    tspinZero:0,tspinSingle:0,tspinDouble:0,tspinTriple:0,tspinMini:0,
+    perfectClears:0,noClear:0,difficult:0,b2bDifficult:0,
+    holds:0,grossAttack:0,cancelled:0,clashed:0,garbageApplied:0,
+    maxHeight:0,maxHoles:0,maxPending:0,placements:0,ops:0
+  };
+}
+function classify(extra,result,b2bBefore){
+  if(!result)return;
+  const l=result.lines,t=result.tspin;
+  if(result.perfect)extra.perfectClears++;
+  if(t==='full'){
+    if(l===0)extra.tspinZero++;
+    else if(l===1)extra.tspinSingle++;
+    else if(l===2)extra.tspinDouble++;
+    else if(l===3)extra.tspinTriple++;
+  }else if(t==='mini'){
+    extra.tspinMini++;
+  }else{
+    if(l===0)extra.noClear++;
+    else if(l===1)extra.singles++;
+    else if(l===2)extra.doubles++;
+    else if(l===3)extra.triples++;
+    else if(l===4)extra.tetrises++;
+  }
+  const difficult=l===4||(t!=='none'&&l>0);
+  if(difficult)extra.difficult++;
+  if(difficult&&b2bBefore)extra.b2bDifficult++;
+}
+function clearLabel(result){
+  if(!result)return 'TOP OUT';
+  const l=result.lines,t=result.tspin;
+  if(result.perfect)return `PC + ${t==='full'?'T-SPIN ':''}${['NO CLEAR','SINGLE','DOUBLE','TRIPLE','TETRIS'][l]||l}`;
+  if(t==='full')return `T-SPIN ${['ZERO','SINGLE','DOUBLE','TRIPLE'][l]||l}`;
+  if(t==='mini')return `T-SPIN MINI${l?` ${['','SINGLE','DOUBLE','TRIPLE'][l]}`:''}`;
+  return ['NO CLEAR','SINGLE','DOUBLE','TRIPLE','TETRIS'][l]||`${l} LINES`;
+}
+function makeAgent(game,cfg,seed,logical,physical){
+  const ai=new TetrisAI(game,{
+    level:+cfg.level,pps:+cfg.pps,style:cfg.style,seed,
+    mlModel:cfg.mlModel||null,mlScale:cfg.mlScale==null?1:+cfg.mlScale,
+    overlay:cfg.overlay||null,overlayScale:cfg.overlayScale==null?2:+cfg.overlayScale
+  });
+  const agent={game,ai,cfg,logical,physical,nextTime:0,extra:blankExtra()};
+  ai.onSpawn();
+  planNow(ai);
+  agent.nextTime=scheduleDelay(ai);
+  return agent;
+}
+function executePlacement(agent,t,detailed,events,turboDirect=true){
+   const g=agent.game,ai=agent.ai,p=ai.plan;
+   if(!p||g.gameOver)return;
+   const pre={
+     pieces:g.pieces,attacks:g.attacks,lines:g.lines,
+     pending:g.pendingGarbage,b2b:g.b2b,combo:g.combo,
+     received:g.received,score:g.score
+   };
+   const predicted=p.result;
+   const placedType=p.type;
+   const path=(p.path||[]).slice();
+   agent.extra.ops+=path.length+(p.hold?1:0)+1;
+
+   if(p.hold){APP.dispatch(g,'hold',false,true);agent.extra.holds++}
+
+   if(turboDirect && !g.gameOver && g.active){
+     // The AI has already proved this target reachable. For headless benchmarking,
+     // skip replaying every input and lock directly at the chosen grounded state.
+     g.active={...p.target};
+     g.lastAction=p.lastRotate?'rotate':'hard';
+     g.lastKickIndex=p.kickIndex||0;
+     g.lockPiece();
+   }else{
+     for(const a of path)APP.dispatch(g,a,false,true);
+     APP.dispatch(g,'hard',false,true);
+   }
+
+   const locked=g.pieces>pre.pieces;
+   if(locked&&predicted){
+     const comboAfter=predicted.lines>0?pre.combo+1:-1;
+     const gross=attackFor(predicted.lines,predicted.tspin,pre.b2b,comboAfter,predicted.perfect);
+     const cancelled=Math.min(gross,pre.pending);
+     const sent=Math.max(0,gross-cancelled);
+     const applied=Math.min(8,Math.max(0,pre.pending-cancelled));
+     classify(agent.extra,predicted,pre.b2b);
+     agent.extra.grossAttack+=gross;
+     agent.extra.cancelled+=cancelled;
+     agent.extra.garbageApplied+=applied;
+     agent.extra.placements++;
+     const bf=boardFeatures(g.board);
+     agent.extra.maxHeight=Math.max(agent.extra.maxHeight,bf.maxHeight);
+     agent.extra.maxHoles=Math.max(agent.extra.maxHoles,bf.holes);
+     agent.extra.maxPending=Math.max(agent.extra.maxPending,pre.pending);
+     if(detailed){
+       events.push({
+         n:events.length+1,t:Math.round(t),side:agent.logical,physical:agent.physical,
+         piece:placedType,hold:!!p.hold,ops:path.length+(p.hold?1:0)+1,
+         clear:clearLabel(predicted),lines:predicted.lines,tspin:predicted.tspin,
+         gross,cancelled,sent,incoming:pre.pending,garbageApplied:applied,
+         combo:g.combo,b2b:g.b2b,height:bf.maxHeight,holes:bf.holes,
+         totalAttack:g.attacks,totalLines:g.lines,totalPieces:g.pieces,
+         score:g.score
+       });
+     }
+   }else if(detailed){
+     const bf=boardFeatures(g.board);
+     events.push({
+       n:events.length+1,t:Math.round(t),side:agent.logical,physical:agent.physical,
+       piece:placedType,hold:!!p.hold,ops:path.length+(p.hold?1:0)+1,
+       clear:'TOP OUT',lines:0,tspin:'none',gross:0,cancelled:0,sent:0,
+       incoming:pre.pending,garbageApplied:0,combo:g.combo,b2b:g.b2b,
+       height:bf.maxHeight,holes:bf.holes,totalAttack:g.attacks,totalLines:g.lines,
+       totalPieces:g.pieces,score:g.score
+     });
+   }
+
+   ai.plan=null;
+   ai.planning=false;
+   ai.planningPhase='idle';
+   if(!g.gameOver&&!g.finished){
+     ai.onSpawn();
+     planNow(ai);
+     agent.nextTime=t+scheduleDelay(ai);
+   }else{
+     agent.nextTime=Infinity;
+   }
+ }
+
+function gameSummary(agent,duration,simMode="pps"){
+  const g=agent.game,e=agent.extra;
+  return {
+    logical:agent.logical,physical:agent.physical,
+    level:agent.ai.level,ppsSetting:agent.ai.pps,style:agent.ai.style,
+    pieces:g.pieces,lines:g.lines,score:g.score,attacks:g.attacks,received:g.received,
+    pendingGarbage:g.pendingGarbage,tetrises:g.tetrisCount,tspins:g.tspinCount,
+    tsd:g.tspinDouble,perfectClears:g.perfectClears,maxCombo:g.maxCombo,
+    ppsActual:simMode==='pps'&&duration>0?g.pieces/(duration/1000):null,
+    apm:simMode==='pps'&&duration>0?g.attacks/(duration/60000):null,
+    attackPerPiece:g.pieces?g.attacks/g.pieces:0,
+    attackPer100:g.pieces?100*g.attacks/g.pieces:0,
+    singles:e.singles,doubles:e.doubles,triples:e.triples,
+    tspinZero:e.tspinZero,tspinSingle:e.tspinSingle,tspinDouble:e.tspinDouble,
+    tspinTriple:e.tspinTriple,tspinMini:e.tspinMini,
+    noClear:e.noClear,difficult:e.difficult,b2bDifficult:e.b2bDifficult,
+    holds:e.holds,grossAttack:e.grossAttack,cancelled:e.cancelled,clashed:e.clashed,
+    garbageApplied:e.garbageApplied,maxHeight:e.maxHeight,maxHoles:e.maxHoles,
+    maxPending:e.maxPending,avgOps:g.pieces?e.ops/g.pieces:0,
+    gameOver:g.gameOver,board:boardRows(g.board)
+  };
+}
+
+
+function resetAgentPlan(agent){
+  const ai=agent.ai;
+  ai.plan=null;ai.planning=false;ai.planningPhase='idle';
+  ai.planWork=[];ai.planWorkIndex=0;
+}
+function prepareTurboNext(agent){
+  const g=agent.game,ai=agent.ai;
+  resetAgentPlan(agent);
+  if(g.gameOver||g.finished){agent.nextTime=Infinity;return}
+  ai.onSpawn();
+  planNow(ai);
+}
+/*
+  Commit only this CPU's chosen placement.
+  IMPORTANT: this does NOT cancel incoming garbage, raise garbage, send attack,
+  or plan the next piece. Those effects are settled after BOTH CPUs have locked.
+*/
+function commitTurboLocal(agent,round,detailed=false){
+  const g=agent.game,ai=agent.ai,p=ai.plan;
+  const boardBefore=detailed?fullBoardRows(g.board):null;
+  const chosenFeatures=detailed&&p?.analysis?.mlFeatures?p.analysis.mlFeatures.slice():null;
+  const chosenAIScore=detailed&&p?+p.score:null;
+  const candidateSamples=detailed?(g.lastCandidates||[]).slice(0,6).map(c=>({
+    f:c.analysis?.mlFeatures?c.analysis.mlFeatures.slice():null,score:+c.score
+  })).filter(c=>c.f):null;
+  if(!p||g.gameOver)return {
+    agent,pre:{pending:g.pendingGarbage,b2b:g.b2b,combo:g.combo,pieces:g.pieces},
+    locked:false,gross:0,result:null,placedType:p?.type||g.active?.type||'?',
+    hold:false,ops:0,topoutCause:g.gameOver?'preexisting':null,
+    boardBefore,boardAfterLock:boardBefore,placementCells:[],target:null,path:[],
+    lastRotate:false,kickIndex:0
+  };
+
+  const pre={
+    pieces:g.pieces,attacks:g.attacks,lines:g.lines,pending:g.pendingGarbage,
+    b2b:g.b2b,combo:g.combo,received:g.received,score:g.score
+  };
+  const path=(p.path||[]).slice(),placedType=p.type;
+  const ops=path.length+(p.hold?1:0)+1;
+  const target=p.target?{x:p.target.x,y:p.target.y,rot:p.target.rot,type:p.target.type}:null;
+  agent.extra.ops+=ops;
+  if(p.hold){
+    APP.dispatch(g,'hold',false,true);
+    agent.extra.holds++;
+    if(g.gameOver||!g.active){
+      resetAgentPlan(agent);
+      return {agent,pre,locked:false,gross:0,result:null,placedType,hold:true,ops,topoutCause:'hold_spawn',
+        boardBefore,boardAfterLock:detailed?fullBoardRows(g.board):null,placementCells:[],target,path,
+        lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0};
+    }
+  }
+
+  // The planner already proved target reachability. Direct-lock that exact state.
+  g.active={...p.target};
+  g.lastAction=p.lastRotate?'rotate':'hard';
+  g.lastKickIndex=p.kickIndex||0;
+  const piece={...g.active};
+  const placementCells=detailed?cellsOf(piece).map(([x,y])=>[x,y]):null;
+  const tspin=detectTSpin(g.board,piece,g.lastAction==='rotate',g.lastKickIndex);
+
+  for(const [x,y] of cellsOf(piece)){
+    if(y<0){
+      g.topOut();
+      resetAgentPlan(agent);
+      return {agent,pre,locked:false,gross:0,result:null,placedType,hold:!!p.hold,ops,topoutCause:'lockout',
+        boardBefore,boardAfterLock:boardBefore,placementCells,target,path,
+        lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0};
+    }
+    g.board[y][x]=piece.type;
+  }
+
+  g.pieces++;
+  const lines=clearCompletedLines(g.board);
+  const perfect=g.board.every(row=>row.every(v=>!v));
+  if(perfect)g.perfectClears++;
+  const difficult=lines===4||(tspin.type!=='none'&&lines>0);
+  const b2bBefore=g.b2b;
+  if(lines>0){g.combo++;g.maxCombo=Math.max(g.maxCombo,g.combo)}
+  else g.combo=-1;
+  if(difficult)g.b2b=true;else if(lines>0)g.b2b=false;
+  if(lines===4)g.tetrisCount++;
+  if(tspin.type!=='none'){g.tspinCount++;if(lines===2)g.tspinDouble++}
+  g.score+=scoreFor(lines,tspin.type,b2bBefore,g.combo,g.level,perfect);
+  g.lines+=lines;
+
+  const boardAfterLock=detailed?fullBoardRows(g.board):null;
+  const result={board:deepBoard(g.board),lines,tspin:tspin.type,perfect};
+  const gross=attackFor(lines,tspin.type,b2bBefore,g.combo,perfect);
+  classify(agent.extra,result,b2bBefore);
+  agent.extra.grossAttack+=gross;
+  agent.extra.placements++;
+
+  // A locked piece is no longer an active falling piece while garbage rises.
+  // Leaving it active makes applyGarbage collide with the piece that was just
+  // written into the board and can create phantom upward movement/top-outs.
+  g.active=null;
+  resetAgentPlan(agent);
+  return {agent,pre,locked:true,gross,result,placedType,hold:!!p.hold,ops,topoutCause:null,
+    boardBefore,boardAfterLock,placementCells,target,path,lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0,
+    chosenFeatures,chosenAIScore,candidateSamples};
+}
+function settleTurboRound(agentA,agentB,round,detailed,events){
+  // Both plans were created from the same settled round-start state.
+  const oa=commitTurboLocal(agentA,round,detailed);
+  const ob=commitTurboLocal(agentB,round,detailed);
+  const outs=[oa,ob];
+
+  // 1) Each CPU first cancels garbage that was already queued BEFORE this round.
+  for(const o of outs){
+    const g=o.agent.game,e=o.agent.extra;
+    o.cancelled=o.locked?Math.min(o.gross,o.pre.pending):0;
+    o.postSelf=o.locked?Math.max(0,o.gross-o.cancelled):0;
+    e.cancelled+=o.cancelled;
+    e.maxPending=Math.max(e.maxPending,o.pre.pending||0);
+
+    if(o.locked&&!g.gameOver){
+      g.pendingGarbage=Math.max(0,o.pre.pending-o.cancelled);
+      const requested=Math.min(8,g.pendingGarbage);
+      g.pendingGarbage-=requested;
+      o.garbageApplied=requested?g.applyGarbage(requested):0;
+      e.garbageApplied+=o.garbageApplied;
+      if(g.gameOver&&!o.topoutCause)o.topoutCause='garbage';
+    }else{
+      o.garbageApplied=0;
+    }
+  }
+
+  // 2) Same-round outgoing attacks meet each other simultaneously.
+  // Only the residual is actually sent and counted as Attack.
+  const clash=Math.min(oa.postSelf||0,ob.postSelf||0);
+  oa.clashed=clash;ob.clashed=clash;
+  oa.agent.extra.clashed+=clash;ob.agent.extra.clashed+=clash;
+  oa.sent=Math.max(0,(oa.postSelf||0)-clash);
+  ob.sent=Math.max(0,(ob.postSelf||0)-clash);
+  oa.agent.game.attacks+=oa.sent;
+  ob.agent.game.attacks+=ob.sent;
+
+  // Newly sent garbage is queued for the opponent's NEXT placement.
+  if(oa.sent>0&&!ob.agent.game.gameOver)ob.agent.game.receiveGarbage(oa.sent);
+  if(ob.sent>0&&!oa.agent.game.gameOver)oa.agent.game.receiveGarbage(ob.sent);
+
+  // 3) Spawn both next pieces only after all round effects have been settled.
+  for(const o of outs){
+    const g=o.agent.game;
+    if(!g.gameOver&&!g.finished){
+      if(!g.spawn()&&!o.topoutCause)o.topoutCause='spawn';
+    }
+  }
+
+  // Snapshot/log after settlement. Always log in logical A/B order, not execution order.
+  for(const o of outs){
+    const g=o.agent.game,e=o.agent.extra,bf=boardFeatures(g.board);
+    e.maxHeight=Math.max(e.maxHeight,bf.maxHeight);
+    e.maxHoles=Math.max(e.maxHoles,bf.holes);
+    if(detailed){
+      events.push({
+        n:0,t:round,side:o.agent.logical,physical:o.agent.physical,
+        piece:o.placedType,hold:o.hold,ops:o.ops,
+        clear:o.result?clearLabel(o.result):'TOP OUT',
+        lines:o.result?.lines||0,tspin:o.result?.tspin||'none',
+        gross:o.gross||0,cancelled:o.cancelled||0,clashed:o.clashed||0,sent:o.sent||0,
+        incoming:o.pre.pending||0,garbageApplied:o.garbageApplied||0,
+        combo:g.combo,b2b:g.b2b,height:bf.maxHeight,holes:bf.holes,
+        totalAttack:g.attacks,totalLines:g.lines,totalPieces:g.pieces,score:g.score,
+        topout:g.gameOver,topoutCause:o.topoutCause,
+        boardBefore:o.boardBefore,boardAfterLock:o.boardAfterLock,boardAfter:fullBoardRows(g.board),
+        placementCells:o.placementCells||[],target:o.target||null,path:o.path||[],
+        lastRotate:!!o.lastRotate,kickIndex:o.kickIndex||0,
+        mlFeatures:o.chosenFeatures||null,aiScore:o.chosenAIScore,candidateSamples:o.candidateSamples||null
+      });
+    }
+  }
+  if(detailed){
+    events.sort((x,y)=>x.t-y.t || (x.side==='A'?-1:1));
+    for(let i=0;i<events.length;i++)events[i].n=i+1;
+  }
+
+  // Plans for the next round see the same fully-settled opponent state.
+  if(!agentA.game.gameOver&&!agentB.game.gameOver){
+    prepareTurboNext(agentA);
+    prepareTurboNext(agentB);
+  }
+}
+
+function simulateMatch(cfg,matchIndex=0,detailed=false){
+   const paired=!!cfg.pairedSeeds;
+   const seedIndex=paired?Math.floor(matchIndex/2):matchIndex;
+   const seed=mix32((cfg.baseSeed>>>0)+Math.imul(seedIndex+1,0x9E3779B9));
+   const swapped=paired?(matchIndex%2===1):(!!cfg.swapSides && (matchIndex%2===1));
+   const leftLogical=swapped?'B':'A',rightLogical=swapped?'A':'B';
+   const leftCfg=swapped?cfg.B:cfg.A,rightCfg=swapped?cfg.A:cfg.B;
+   let g1,g2;
+   const bagSeedA=cfg.independentBags?mix32(seed^0x13579BDF):seed;
+   const bagSeedB=cfg.independentBags?mix32(seed^0x2468ACE1):seed;
+   const leftGameSeed=leftLogical==='A'?bagSeedA:bagSeedB;
+   const rightGameSeed=rightLogical==='A'?bagSeedA:bagSeedB;
+   g1=new TetrisGame({id:'p1',name:leftLogical,mode:'cpu_cpu',seed:leftGameSeed,
+     onAttack:(g,n)=>g2&&g2.receiveGarbage(n),onTopOut:()=>{},onFinish:()=>{},onEvent:()=>{}});
+   g2=new TetrisGame({id:'p2',name:rightLogical,mode:'cpu_cpu',seed:rightGameSeed,
+     onAttack:(g,n)=>g1&&g1.receiveGarbage(n),onTopOut:()=>{},onFinish:()=>{},onEvent:()=>{}});
+   g1.opponent=g2;g2.opponent=g1;
+
+   // AI RNG belongs to logical CPU identity, never to physical left/right seat.
+   // Therefore a paired side-swap replays the exact same A and B randomness.
+   const aiSeedA=(seed+11)>>>0,aiSeedB=(seed+29)>>>0;
+   const leftAISeed=leftLogical==='A'?aiSeedA:aiSeedB;
+   const rightAISeed=rightLogical==='A'?aiSeedA:aiSeedB;
+   const left=makeAgent(g1,leftCfg,leftAISeed,leftLogical,'p1');
+   const right=makeAgent(g2,rightCfg,rightAISeed,rightLogical,'p2');
+   const byLogicalAgent={};byLogicalAgent[leftLogical]=left;byLogicalAgent[rightLogical]=right;
+   const Aagent=byLogicalAgent.A,Bagent=byLogicalAgent.B;
+
+   let t=0,events=[];
+   const maxPieces=Math.max(20,+cfg.maxPieces||600);
+   const simMode=cfg.simMode==='pps'?'pps':'turbo';
+   let reason='piece_limit',rounds=0;
+
+   if(simMode==='turbo'){
+     // FAIR TURBO: both CPUs make one move from the same round-start state.
+     // No first-mover exists inside a round.
+     while(!g1.gameOver&&!g2.gameOver && rounds<maxPieces){
+       rounds++;
+       t=rounds;
+       settleTurboRound(Aagent,Bagent,rounds,detailed,events);
+     }
+   }else{
+     // Legacy virtual-PPS mode intentionally keeps chronological event ordering.
+     const maxMs=Math.max(1000,(+cfg.maxSeconds||180)*1000);
+     while(t<maxMs && !g1.gameOver && !g2.gameOver &&
+           g1.pieces<maxPieces && g2.pieces<maxPieces){
+       let a=(left.nextTime<=right.nextTime)?left:right;
+       if(!Number.isFinite(a.nextTime)){reason='stalled';break}
+       t=a.nextTime;
+       if(t>maxMs){t=maxMs;reason='timeout';break}
+       executePlacement(a,t,detailed,events,true);
+     }
+     if(!g1.gameOver&&!g2.gameOver&&t>=maxMs)reason='timeout';
+   }
+
+   let winner=null,winnerPhysical=null;
+   if(g1.gameOver&&!g2.gameOver){winner=rightLogical;winnerPhysical='p2';reason='topout'}
+   else if(g2.gameOver&&!g1.gameOver){winner=leftLogical;winnerPhysical='p1';reason='topout'}
+   else if(g1.gameOver&&g2.gameOver){reason='double_topout'}
+   else if((simMode==='turbo'&&rounds>=maxPieces)||g1.pieces>=maxPieces||g2.pieces>=maxPieces){reason='piece_limit'}
+
+   const durationMetric=simMode==='pps'?t:rounds;
+   const byLogical={};
+   byLogical[leftLogical]=gameSummary(left,durationMetric,simMode);
+   byLogical[rightLogical]=gameSummary(right,durationMetric,simMode);
+   return {
+     matchIndex,seed,seedIndex,paired,pairIndex:paired?seedIndex:null,pairLeg:paired?(matchIndex%2):null,
+     swapped,winner,winnerPhysical,reason,simMode,
+     durationMs:simMode==='pps'?Math.round(t):null,
+     rounds:simMode==='turbo'?rounds:null,
+     A:byLogical.A,B:byLogical.B,
+     events:detailed?events:undefined
+   };
+ }
+let cancelled=new Set();
+self.onmessage=e=>{
+  const m=e.data||{};
+  if(m.type==='cancel'){cancelled.add(m.jobId);return}
+  if(m.type==='single'){
+    try{
+      const result=simulateMatch(m.config,m.matchIndex||0,true);
+      self.postMessage({type:'singleResult',jobId:m.jobId,result});
+    }catch(err){
+      self.postMessage({type:'error',jobId:m.jobId,message:String(err&&err.stack||err)});
+    }
+    return;
+  }
+  if(m.type==='batch'){
+    const indices=(m.indices||[]).slice();
+    const results=[];
+    let pos=0;
+    const runNext=()=>{
+      if(cancelled.has(m.jobId)){self.postMessage({type:'cancelled',jobId:m.jobId,count:results.length});return}
+      if(pos>=indices.length){self.postMessage({type:'batchResult',jobId:m.jobId,results});return}
+      try{
+        const idx=indices[pos++];
+        results.push(simulateMatch(m.config,idx,false));
+        self.postMessage({type:'progress',jobId:m.jobId,count:1});
+        setTimeout(runNext,0);
+      }catch(err){
+        self.postMessage({type:'error',jobId:m.jobId,message:String(err&&err.stack||err)});
+      }
+    };
+    runNext();
+  }
+};
+
+</script>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const levels=[
+  [1,'BEGINNER'],[2,'BASIC'],[3,'STABLE'],[4,'LOOKAHEAD I'],[5,'LOOKAHEAD II'],
+  [6,'GARBAGE AWARE'],[7,'T-SPIN PLANNER'],[8,'VS TACTICS'],[9,'EXPERT']
+];
+const styles=[['balanced','Balanced'],['aggressive','Aggressive'],['defensive','Defensive'],['tspin','T-Spin']];
+for(const id of ['a-level','b-level']){
+  $(id).innerHTML=levels.map(([n,s])=>`<option value="${n}">Lv.${n} ${s}</option>`).join('');
+}
+$('a-level').value='9';$('b-level').value='8';
+for(const id of ['a-style','b-style'])$(id).innerHTML=styles.map(([v,s])=>`<option value="${v}">${s}</option>`).join('');
+$('a-style').value='balanced';$('b-style').value='aggressive';
+function syncModeUI(){
+  const turbo=$('sim-mode').value==='turbo';
+  document.querySelectorAll('.legacy-pps,.legacy-time').forEach(el=>el.style.opacity=turbo?'.38':'1');
+  const paired=$('paired').checked;
+  $('swap').disabled=paired;
+  $('swap').closest('.check').style.opacity=paired?'.38':'1';
+}
+$('sim-mode').addEventListener('change',syncModeUI);
+$('paired').addEventListener('change',syncModeUI);
+syncModeUI();
+
+const hc=Math.max(1,navigator.hardwareConcurrency||4),defWorkers=Math.min(4,Math.max(1,hc-1));
+$('workers').innerHTML=Array.from({length:Math.min(8,hc)},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
+$('workers').value=String(defWorkers);
+
+let activeWorkers=[],activeJob=null,batchResults=[],singleData=null,startWall=0,doneCount=0,totalCount=0;
+const workerBlob=new Blob([$('worker-code').textContent],{type:'text/javascript'});
+const workerURL=URL.createObjectURL(workerBlob);
+
+function trainedBenchCfg(level,style){
+  const s=window.__TETRIS_TRAINED_STATE;
+  if(!$('use-trained')?.checked||!s?.champion)return {};
+  return {
+    mlModel:(s.styleHeads&&s.styleHeads[style])||s.champion,
+    mlScale:(s.levelScales&&s.levelScales[level-1]!=null)?s.levelScales[level-1]:1,
+    overlay:s.overlay||null,overlayScale:2
+  };
+}
+function cfg(){
+  const al=+$('a-level').value,bl=+$('b-level').value,as=$('a-style').value,bs=$('b-style').value;
+  return {
+    baseSeed:Number($('seed').value)>>>0,
+    simMode:$('sim-mode').value,
+    A:{level:al,pps:+$('a-pps').value,style:as,...trainedBenchCfg(al,as)},
+    B:{level:bl,pps:+$('b-pps').value,style:bs,...trainedBenchCfg(bl,bs)},
+    pairedSeeds:$('paired').checked,
+    swapSides:$('swap').checked,
+    maxSeconds:+$('max-sec').value,
+    maxPieces:+$('max-pieces').value
+  };
+}
+function fmtSec(ms){return (ms/1000).toFixed(ms<10000?3:1)+' s'}
+function fmtNum(v,d=2){return Number(v||0).toFixed(d)}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function setRunning(on,text=''){
+  $('run-one').disabled=on;$('run-batch').disabled=on;$('stop').disabled=!on;
+  $('status').classList.toggle('show',on);
+  if(text)$('status-text').textContent=text;
+  if(!on){$('bar').style.width='0%'}
+}
+function updateProgress(){
+  const p=totalCount?doneCount/totalCount:0;
+  $('bar').style.width=(p*100).toFixed(1)+'%';
+  const elapsed=(performance.now()-startWall)/1000;
+  const rate=elapsed?doneCount/elapsed:0;
+  const eta=rate&&doneCount<totalCount?(totalCount-doneCount)/rate:0;
+  $('status-text').textContent=`${doneCount} / ${totalCount} matches (${(p*100).toFixed(1)}%)`;
+  $('status-time').textContent=`実時間 ${elapsed.toFixed(1)}s${eta?` / ETA ${eta.toFixed(0)}s`:''}`;
+}
+function killWorkers(){
+  for(const w of activeWorkers)try{w.terminate()}catch(_){}
+  activeWorkers=[];activeJob=null;
+}
+$('stop').onclick=()=>{killWorkers();setRunning(false);$('status-text').textContent='停止しました';};
+
+function mkWorker(){
+  const w=new Worker(workerURL);
+  activeWorkers.push(w);return w;
+}
+$('run-one').onclick=()=>{
+  killWorkers();batchResults=[];singleData=null;
+  const c=cfg();c.swapSides=false;c.pairedSeeds=false;
+  activeJob='single-'+Date.now();totalCount=1;doneCount=0;startWall=performance.now();
+  setRunning(true,'1戦を計算中…');
+  const w=mkWorker();
+  w.onmessage=e=>{
+    const m=e.data||{};if(m.jobId!==activeJob)return;
+    if(m.type==='singleResult'){
+      doneCount=1;updateProgress();singleData=m.result;renderSingle(m.result);
+      killWorkers();setRunning(false);
+    }else if(m.type==='error'){
+      alert(m.message);killWorkers();setRunning(false);
+    }
+  };
+  w.postMessage({type:'single',jobId:activeJob,config:c,matchIndex:0});
+};
+
+$('run-batch').onclick=()=>{
+  killWorkers();batchResults=[];
+  totalCount=Math.max(1,Math.min(10000,+$('matches').value||1));doneCount=0;startWall=performance.now();
+  activeJob='batch-'+Date.now();setRunning(true,'多数戦を計算中…');
+  const c=cfg(),wc=Math.max(1,Math.min(totalCount,+$('workers').value||1));
+  const buckets=Array.from({length:wc},()=>[]);
+  for(let i=0;i<totalCount;i++)buckets[i%wc].push(i);
+  let finished=0;
+  for(let j=0;j<wc;j++){
+    const w=mkWorker();
+    w.onmessage=e=>{
+      const m=e.data||{};if(m.jobId!==activeJob)return;
+      if(m.type==='progress'){doneCount+=m.count||0;updateProgress()}
+      else if(m.type==='batchResult'){
+        batchResults.push(...m.results);finished++;
+        if(finished===wc){
+          batchResults.sort((a,b)=>a.matchIndex-b.matchIndex);
+          renderBatch(batchResults);
+          killWorkers();setRunning(false);
+        }
+      }else if(m.type==='error'){
+        alert(m.message);killWorkers();setRunning(false);
+      }
+    };
+    w.postMessage({type:'batch',jobId:activeJob,config:c,indices:buckets[j]});
+  }
+};
+
+function statTable(s){
+ const rows=[
+  ['Pieces',s.pieces],['実測 PPS',s.ppsActual==null?'—':fmtNum(s.ppsActual)],['Lines',s.lines],['Attack',s.attacks],
+  ['APM',s.apm==null?'—':fmtNum(s.apm,1)],['Attack / Piece',fmtNum(s.attackPerPiece,3)],['Attack / 100 pieces',fmtNum(s.attackPer100,1)],
+  ['Single',s.singles],['Double',s.doubles],['Triple',s.triples],['Tetris',s.tetrises],
+  ['T-Spin Single',s.tspinSingle],['T-Spin Double',s.tspinDouble],['T-Spin Triple',s.tspinTriple],
+  ['T-Spin Mini',s.tspinMini],['No Clear',s.noClear],['B2B difficult',s.b2bDifficult],
+  ['Max Combo',s.maxCombo],['Perfect Clear',s.perfectClears],['HOLD',s.holds],
+  ['Gross Attack',s.grossAttack],['Cancelled incoming',s.cancelled],['Same-round Clash',s.clashed||0],['Garbage Applied',s.garbageApplied],
+  ['Max Height',s.maxHeight],['Max Holes',s.maxHoles],['Avg Ops / Piece',fmtNum(s.avgOps,2)]
+ ];
+ return `<table class="stats-table">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`;
+}
+function boardHtml(rows,title,klass){
+  return `<div class="boardwrap"><div><h3 class="${klass==='a'?'tagA':'tagB'}" style="margin:0 0 8px">${title}</h3><div class="board">${
+   rows.map(r=>[...r].map(c=>`<i class="cell ${c==='.'?'':c}"></i>`).join('')).join('')
+  }</div></div><div class="small">最終盤面<br>20 visible rows</div></div>`;
+}
+
+function pvRows(rows){
+  if(!Array.isArray(rows)||!rows.length)return Array.from({length:24},()=>'.'.repeat(10));
+  if(rows.length===20)return Array(4).fill('.'.repeat(10)).concat(rows);
+  return rows.slice(0,24);
+}
+function placementCellText(e){
+  const cells=(e.placementCells||[]).map(c=>Array.isArray(c)?`(${c[0]},${c[1]})`:'').filter(Boolean).join(' ');
+  return cells||'-';
+}
+function placementTargetText(e){
+  if(!e.target)return '-';
+  const finish=e.lastRotate?`ROT/k${e.kickIndex||0}`:'DROP';
+  return `x=${e.target.x} y=${e.target.y} r=${e.target.rot} ${finish}`;
+}
+function compactPath(path){
+  if(!Array.isArray(path)||!path.length)return '-';
+  const map={left:'L',right:'R',down:'D',cw:'CW',ccw:'CCW'};
+  return path.map(a=>map[a]||a).join(' ');
+}
+function asciiPlacementBoard(rows,overlayCells=[]){
+  rows=pvRows(rows);
+  const overlay=new Set((overlayCells||[]).filter(c=>Array.isArray(c)&&c.length>=2).map(([x,y])=>`${x},${y}`));
+  const out=['   0123456789'];
+  for(let y=0;y<24;y++){
+    let line='';
+    for(let x=0;x<10;x++){
+      if(overlay.has(`${x},${y}`)){line+='@';continue}
+      const c=(rows[y]&&rows[y][x])||'.';
+      line+=c==='.'?'.':c;
+    }
+    out.push(`${String(y).padStart(2,'0')}${y<4?'H':' '} ${line}`);
+  }
+  return out.join('\n');
+}
+function buildPlacementTextLog(r){
+  const turbo=r.simMode==='turbo';
+  const lines=[];
+  lines.push('TETRIS AI PLACEMENT LOG');
+  lines.push(`seed=${r.seed} mode=${r.simMode} rounds=${r.rounds} winner=${r.winner||'DRAW'} reason=${r.reason}`);
+  lines.push('座標: x=0..9 / y=0..23、y=0..3はhidden rows。@ = 今回置いた4マス。');
+  lines.push('');
+  for(const e of (r.events||[])){
+    const when=turbo?`R${e.t}`:`t=${(e.t/1000).toFixed(3)}s`;
+    lines.push(`#${e.n} ${when} CPU ${e.side} piece=${e.piece}${e.hold?' HOLD':''}`);
+    lines.push(`  Placement: ${placementTargetText(e)}`);
+    lines.push(`  Cells: ${placementCellText(e)}`);
+    lines.push(`  Path: ${compactPath(e.path)} | Ops=${e.ops}`);
+    lines.push(`  Result: ${e.clear} | Gross=${e.gross} Cancel=${e.cancelled} Clash=${e.clashed||0} Sent=${e.sent} Incoming=${e.incoming} Rise=${e.garbageApplied}`);
+    lines.push(`  State: Combo=${e.combo} B2B=${e.b2b?'ON':'-'} H=${e.height} Holes=${e.holes}${e.topout?` KO=${e.topoutCause||'yes'}`:''}`);
+    lines.push('  BEFORE + PLACEMENT (@):');
+    lines.push(asciiPlacementBoard(e.boardBefore,e.placementCells));
+    lines.push('  AFTER SETTLEMENT:');
+    lines.push(asciiPlacementBoard(e.boardAfter,[]));
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+function renderSingle(r){
+ $('single-section').classList.remove('hidden');
+ const cls=r.winner?r.winner:'draw',winner=r.winner?`CPU ${r.winner} WIN`:'DRAW / LIMIT';
+ const notable=(r.events||[]).filter(e=>e.lines>=3||e.tspin!=='none'||e.sent>=3||e.clear==='TOP OUT');
+ const turbo=r.simMode==='turbo';
+ const timeLabel=e=>turbo?`R${e.t}`:`${(e.t/1000).toFixed(3)}s`;
+ const rows=(r.events||[]).map((e,idx)=>{
+   const clearClass=(e.lines>=3||e.tspin!=='none')?'bigclear':(e.lines===1?'single':'');
+   return `<tr class="event-row" data-event-index="${idx}"><td>${e.n}</td><td>${timeLabel(e)}</td><td class="${e.side==='A'?'tagA':'tagB'}">${e.side}</td>
+   <td>${e.piece}</td><td>${e.hold?'HOLD':''}</td><td class="${clearClass}">${escapeHtml(e.clear)}</td>
+   <td><code>${escapeHtml(placementTargetText(e))}</code></td><td><code>${escapeHtml(placementCellText(e))}</code></td>
+   <td><code>${escapeHtml(compactPath(e.path))}</code></td>
+   <td>${e.gross}</td><td>${e.cancelled}</td><td>${e.clashed||0}</td><td>${e.sent}</td><td>${e.incoming}</td><td>${e.garbageApplied}</td>
+   <td>${e.combo}</td><td>${e.b2b?'ON':'-'}</td><td>${e.height}</td><td>${e.holes}</td><td>${e.ops}</td>
+   <td>${e.topout?`KO${e.topoutCause?`:${e.topoutCause}`:''}`:''}</td></tr>`;
+ }).join('');
+ const keyHtml=notable.length?notable.slice(0,30).map(e=>`<div class="small">${timeLabel(e)} · <b class="${e.side==='A'?'tagA':'tagB'}">${e.side}</b> · ${escapeHtml(e.clear)} · sent ${e.sent}</div>`).join(''):'<div class="small">Tetris/T-Spin/大攻撃はありませんでした。</div>';
+ const durationText=turbo?`${r.rounds} rounds`:`${fmtSec(r.durationMs)}`;
+ $('single-result').innerHTML=`
+  <div class="result-head">
+   <div><div class="winner ${cls}">${winner}</div>
+    <div class="meta">seed ${r.seed} / ${durationText} / mode: ${r.simMode} / reason: ${r.reason} / swapped: ${r.swapped?'yes':'no'}</div></div>
+   <div><b>主なイベント</b>${keyHtml}</div>
+  </div>
+  <div class="compare">
+   <div class="statbox a"><h3>CPU A · Lv.${r.A.level} ${escapeHtml(r.A.style)}</h3>${statTable(r.A)}</div>
+   <div class="statbox b"><h3>CPU B · Lv.${r.B.level} ${escapeHtml(r.B.style)}</h3>${statTable(r.B)}</div>
+  </div>
+  <div class="boards">${boardHtml(r.A.board,'CPU A','a')}${boardHtml(r.B.board,'CPU B','b')}</div>
+  <h3 style="margin:18px 0 8px">全ロック時系列・配置ログ</h3>
+  <div class="small" style="margin-bottom:7px">Placement = target座標/回転。Cells = 実際に固定した4マス座標。Path = AIが選んだ操作経路。</div>
+  <div class="scroll"><table class="log"><thead><tr>
+   <th>#</th><th>${turbo?'Round':'t'}</th><th>CPU</th><th>Piece</th><th>Hold</th><th>Clear</th>
+   <th>Placement</th><th>Cells</th><th>Path</th>
+   <th>Gross</th><th>Cancel</th><th>Clash</th><th>Sent</th>
+   <th>Incoming</th><th>Rise</th><th>Combo</th><th>B2B</th><th>H</th><th>Holes</th><th>Ops</th><th>KO</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="tools">
+    <button class="btn" onclick="downloadPlacementLog()">配置ログTXTを保存</button>
+    <button class="btn" onclick="downloadSingle()">詳細JSONを保存</button>
+  </div>`;
+ $('single-section').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+window.downloadSingle=()=>{if(singleData)downloadBlob(JSON.stringify(singleData,null,2),'tetris_ai_single_result.json','application/json')};
+window.downloadPlacementLog=()=>{if(singleData)downloadBlob(buildPlacementTextLog(singleData),'tetris_ai_placement_log.txt','text/plain;charset=utf-8')};
+
+function avg(rs,side,key){return rs.reduce((s,r)=>s+(Number(r[side][key])||0),0)/Math.max(1,rs.length)}
+
+function batchAudit(rs){
+  const p1=rs.filter(r=>r.winnerPhysical==='p1').length;
+  const p2=rs.filter(r=>r.winnerPhysical==='p2').length;
+  const paired=rs.some(r=>r.paired);
+  const groups=new Map();
+  if(paired){
+    for(const r of rs){
+      if(r.pairIndex==null)continue;
+      if(!groups.has(r.pairIndex))groups.set(r.pairIndex,[]);
+      groups.get(r.pairIndex).push(r);
+    }
+  }
+  let completePairs=0,aSweep=0,bSweep=0,split=0,pairDraw=0,mirrorMismatch=0;
+  for(const arr of groups.values()){
+    if(arr.length!==2)continue;
+    completePairs++;
+    const a=arr.slice().sort((x,y)=>x.pairLeg-y.pairLeg);
+    const wins=a.map(r=>r.winner);
+    if(wins[0]==='A'&&wins[1]==='A')aSweep++;
+    else if(wins[0]==='B'&&wins[1]==='B')bSweep++;
+    else if(wins[0]&&wins[1]&&wins[0]!==wins[1])split++;
+    else pairDraw++;
+    const k=r=>JSON.stringify({
+      winner:r.winner,reason:r.reason,rounds:r.rounds,
+      A:[r.A.pieces,r.A.lines,r.A.attacks,r.A.singles,r.A.doubles,r.A.triples,r.A.tetrises,r.A.tspinDouble,r.A.maxHeight,r.A.maxHoles],
+      B:[r.B.pieces,r.B.lines,r.B.attacks,r.B.singles,r.B.doubles,r.B.triples,r.B.tetrises,r.B.tspinDouble,r.B.maxHeight,r.B.maxHoles]
+    });
+    if(k(a[0])!==k(a[1]))mirrorMismatch++;
+  }
+  return {p1,p2,paired,completePairs,aSweep,bSweep,split,pairDraw,mirrorMismatch};
+}
+
+function renderBatch(rs){
+ $('batch-section').classList.remove('hidden');
+ const aw=rs.filter(r=>r.winner==='A').length,bw=rs.filter(r=>r.winner==='B').length,dr=rs.length-aw-bw;
+ const decisive=aw+bw,awr=decisive?aw/decisive:0,audit=batchAudit(rs);
+ const turbo=rs[0]?.simMode==='turbo';
+ const avgLen=turbo
+   ? rs.reduce((s,r)=>s+(r.rounds||0),0)/rs.length
+   : rs.reduce((s,r)=>s+(r.durationMs||0),0)/rs.length/1000;
+ const pct=x=>(100*x/rs.length).toFixed(1);
+ const val=(v,d)=>typeof v==='number'?v.toFixed(d):v;
+ const metricRows=[
+   ['平均 Pieces',avg(rs,'A','pieces'),avg(rs,'B','pieces'),1],
+   ['平均 Attack',avg(rs,'A','attacks'),avg(rs,'B','attacks'),2],
+   ['Attack / Piece',avg(rs,'A','attackPerPiece'),avg(rs,'B','attackPerPiece'),3],
+   ['Attack / 100 pieces',avg(rs,'A','attackPer100'),avg(rs,'B','attackPer100'),1],
+   ['平均 Single',avg(rs,'A','singles'),avg(rs,'B','singles'),2],
+   ['平均 Double',avg(rs,'A','doubles'),avg(rs,'B','doubles'),2],
+   ['平均 Triple',avg(rs,'A','triples'),avg(rs,'B','triples'),2],
+   ['平均 Tetris',avg(rs,'A','tetrises'),avg(rs,'B','tetrises'),2],
+   ['平均 TSD',avg(rs,'A','tspinDouble'),avg(rs,'B','tspinDouble'),2],
+   ['平均 T-Spin Triple',avg(rs,'A','tspinTriple'),avg(rs,'B','tspinTriple'),2],
+   ['平均 Cancel incoming',avg(rs,'A','cancelled'),avg(rs,'B','cancelled'),2],
+   ['平均 Same-round Clash',avg(rs,'A','clashed'),avg(rs,'B','clashed'),2],
+   ['平均 Max Height',avg(rs,'A','maxHeight'),avg(rs,'B','maxHeight'),2],
+   ['平均 Max Holes',avg(rs,'A','maxHoles'),avg(rs,'B','maxHoles'),2],
+   ['平均 Ops / Piece',avg(rs,'A','avgOps'),avg(rs,'B','avgOps'),2]
+ ];
+ if(!turbo){
+   metricRows.splice(1,0,['平均実測 PPS',avg(rs,'A','ppsActual'),avg(rs,'B','ppsActual'),3]);
+   metricRows.splice(3,0,['平均 APM',avg(rs,'A','apm'),avg(rs,'B','apm'),1]);
+ }
+ const tableRows=rs.slice(0,300).map(r=>{
+   const len=turbo?`${r.rounds}`:`${(r.durationMs/1000).toFixed(1)}`;
+   return `<tr><td>${r.matchIndex+1}</td><td>${r.seed}</td><td>${r.paired?(r.pairIndex+1)+'-'+(r.pairLeg+1):'-'}</td><td>${r.swapped?'yes':'no'}</td>
+   <td class="${r.winner==='A'?'tagA':r.winner==='B'?'tagB':''}">${r.winner||'DRAW'}</td><td>${r.winnerPhysical||'-'}</td><td>${len}</td>
+   <td>${r.A.attacks}</td><td>${r.B.attacks}</td><td>${r.A.tetrises}/${r.A.tspinDouble}</td><td>${r.B.tetrises}/${r.B.tspinDouble}</td><td>${r.reason}</td></tr>`;
+ }).join('');
+ const lenLabel=turbo?'平均ラウンド数':'平均仮想試合時間';
+ const lenValue=turbo?avgLen.toFixed(1):(avgLen.toFixed(1)+'s');
+ $('batch-result').innerHTML=`
+  <div class="batchTop">
+   <div>
+    <div class="winner ${aw>bw?'A':bw>aw?'B':'draw'}">${aw>bw?'CPU A LEADS':bw>aw?'CPU B LEADS':'EVEN'}</div>
+    <div class="meta">${rs.length} matches / A ${aw} wins / B ${bw} wins / draw ${dr}<br>
+    決着戦のみのA勝率 ${(awr*100).toFixed(1)}% / ${lenLabel} ${lenValue}<br>
+    Physical seat: p1 ${audit.p1} wins / p2 ${audit.p2} wins
+    ${audit.paired?`<br>Paired audit: ${audit.completePairs} complete pairs / A sweep ${audit.aSweep} / split ${audit.split} / B sweep ${audit.bSweep} / pair draw ${audit.pairDraw} / <b>mirror mismatch ${audit.mirrorMismatch}</b>`:''}</div>
+    <div class="winbar"><div class="wa" style="width:${pct(aw)}%">${aw?`A ${pct(aw)}%`:''}</div><div class="wd" style="width:${pct(dr)}%">${dr?`DRAW ${pct(dr)}%`:''}</div><div class="wb" style="width:${pct(bw)}%">${bw?`B ${pct(bw)}%`:''}</div></div>
+   </div>
+   <div class="kpis">
+    <div class="kpi"><span>A wins</span><b>${aw}</b></div><div class="kpi"><span>B wins</span><b>${bw}</b></div>
+    <div class="kpi"><span>Draw</span><b>${dr}</b></div><div class="kpi"><span>A win decisive</span><b>${(awr*100).toFixed(1)}%</b></div>
+    <div class="kpi"><span>${turbo?'Avg rounds':'Avg duration'}</span><b>${lenValue}</b></div><div class="kpi"><span>Matches</span><b>${rs.length}</b></div>
+    ${audit.paired?`<div class="kpi"><span>Paired seeds</span><b>${audit.completePairs}</b></div><div class="kpi"><span>Mirror mismatch</span><b>${audit.mirrorMismatch}</b></div>`:''}
+   </div>
+  </div>
+  <div class="compare">
+   <div class="statbox a"><h3>CPU A averages</h3><table class="stats-table">${metricRows.map(([k,a,b,d])=>`<tr><td>${k}</td><td>${val(a,d)}</td></tr>`).join('')}</table></div>
+   <div class="statbox b"><h3>CPU B averages</h3><table class="stats-table">${metricRows.map(([k,a,b,d])=>`<tr><td>${k}</td><td>${val(b,d)}</td></tr>`).join('')}</table></div>
+  </div>
+  <div class="charts"><div class="chart"><b>累積勝率（決着戦のみ）</b><canvas id="win-chart"></canvas></div>
+   <div class="chart"><b>${turbo?'試合ラウンド分布':'試合時間分布'}</b><canvas id="dur-chart"></canvas></div></div>
+  <h3 style="margin:18px 0 8px">各試合</h3>
+  <div class="small">画面表示は先頭300戦まで。保存データには全試合を含みます。</div>
+  <div class="scroll"><table class="log"><thead><tr><th>#</th><th>seed</th><th>pair</th><th>swap</th><th>winner</th><th>seat</th><th>${turbo?'rounds':'sec'}</th><th>A atk</th><th>B atk</th><th>A Tetris/TSD</th><th>B Tetris/TSD</th><th>reason</th></tr></thead><tbody>${tableRows}</tbody></table></div>
+  <div class="tools"><button class="btn" onclick="downloadBatchJSON()">全結果JSON</button><button class="btn" onclick="downloadBatchCSV()">CSV</button></div>`;
+ requestAnimationFrame(()=>{drawWinChart(rs);drawDurationChart(rs)});
+ $('batch-section').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function prepCanvas(c){
+ const dpr=devicePixelRatio||1,rect=c.getBoundingClientRect();c.width=Math.max(300,Math.floor(rect.width*dpr));c.height=Math.floor(230*dpr);
+ const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);return {x,w:rect.width,h:230};
+}
+function axes(x,w,h){
+ x.strokeStyle='#34415c';x.lineWidth=1;x.beginPath();x.moveTo(38,12);x.lineTo(38,h-28);x.lineTo(w-10,h-28);x.stroke();
+ x.fillStyle='#8292ad';x.font='11px system-ui';
+}
+function drawWinChart(rs){
+ const c=$('win-chart');if(!c)return;const {x,w,h}=prepCanvas(c);axes(x,w,h);
+ let aw=0,bw=0,pts=[];
+ rs.forEach((r,i)=>{if(r.winner==='A')aw++;if(r.winner==='B')bw++;if(aw+bw)pts.push([i,100*aw/(aw+bw)])});
+ x.strokeStyle='#56c7ff';x.lineWidth=2;x.beginPath();
+ pts.forEach(([i,v],j)=>{const px=38+(w-50)*(i/Math.max(1,rs.length-1)),py=12+(h-40)*(1-v/100);j?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
+ x.fillStyle='#8292ad';x.fillText('100%',4,17);x.fillText('50%',9,12+(h-40)*.5+4);x.fillText('0%',17,h-28);
+}
+function drawDurationChart(rs){
+ const c=$('dur-chart');if(!c)return;const {x,w,h}=prepCanvas(c);axes(x,w,h);
+ const turbo=rs[0]?.simMode==='turbo';
+ const vals=rs.map(r=>turbo?(r.rounds||0):(r.durationMs||0)/1000),max=Math.max(...vals,1),bins=12,arr=Array(bins).fill(0);
+ vals.forEach(v=>arr[Math.min(bins-1,Math.floor(v/max*bins))]++);
+ const m=Math.max(...arr,1),bw=(w-55)/bins;
+ arr.forEach((v,i)=>{const bh=(h-45)*v/m;x.fillStyle='#9b8cff';x.fillRect(40+i*bw,h-29-bh,Math.max(2,bw-2),bh)});
+ x.fillStyle='#8292ad';x.fillText(turbo?'0R':'0s',38,h-10);x.fillText(max.toFixed(0)+(turbo?'R':'s'),w-42,h-10);
+}
+function downloadBlob(text,name,type){
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+window.downloadBatchJSON=()=>downloadBlob(JSON.stringify(batchResults,null,2),'tetris_ai_batch_results.json','application/json');
+window.downloadBatchCSV=()=>{
+ const head=['match','seed','paired','pair_index','pair_leg','swapped','mode','winner','winner_physical','reason','rounds','duration_s','A_pieces','B_pieces','A_attack','B_attack','A_gross','B_gross','A_cancel','B_cancel','A_clash','B_clash','A_single','B_single','A_double','B_double','A_triple','B_triple','A_tetris','B_tetris','A_tsd','B_tsd','A_attack_per_piece','B_attack_per_piece'];
+ const lines=[head.join(',')];
+ for(const r of batchResults)lines.push([
+   r.matchIndex+1,r.seed,r.paired,r.pairIndex??'',r.pairLeg??'',r.swapped,r.simMode,r.winner||'',r.winnerPhysical||'',r.reason,r.rounds??'',r.durationMs==null?'':(r.durationMs/1000).toFixed(3),
+   r.A.pieces,r.B.pieces,r.A.attacks,r.B.attacks,r.A.grossAttack,r.B.grossAttack,r.A.cancelled,r.B.cancelled,r.A.clashed||0,r.B.clashed||0,
+   r.A.singles,r.B.singles,r.A.doubles,r.B.doubles,r.A.triples,r.B.triples,
+   r.A.tetrises,r.B.tetrises,r.A.tspinDouble,r.B.tspinDouble,r.A.attackPerPiece.toFixed(4),r.B.attackPerPiece.toFixed(4)
+ ].join(','));
+ downloadBlob(lines.join('\n'),'tetris_ai_batch_results.csv','text/csv');
+};
+</script>
+
+<script>
+'use strict';
+/* =========================================================
+   TETRIS AI AUTOTRAINER V2
+   - wall-clock budget
+   - adaptive / successive-halving evolution
+   - 44-feature NN while overlay remains 24-dimensional
+   - pairwise ranking warm start
+   - mini-batch clipped SGD
+   - replay buffer + mixed opponents
+   - sequential promotion test with confidence interval
+   - safe lastCompletedCycle checkpoint semantics
+   ========================================================= */
+(()=>{
+  const TKEY='tetris_autotrainer_singlefile_v2';
+  const SCHEMA=2, FEAT=44, OVERLAY_FEAT=24;
+  const q=id=>document.getElementById(id);
+  const styles4=['balanced','aggressive','defensive','tspin'];
+  const TR={
+    running:false,paused:false,stop:false,state:null,config:null,
+    activeWorkers:new Set(),sessionMatches:0,sessionSamples:0,sessionStartedAt:0
+  };
+
+  function clone(x){return x==null?x:JSON.parse(JSON.stringify(x))}
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+  function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+  function hash32(x){x|=0;x=Math.imul(x^(x>>>16),0x7feb352d);x=Math.imul(x^(x>>>15),0x846ca68b);return (x^(x>>>16))>>>0}
+  function makeRand(seed){
+    let a=seed>>>0,spare=null;
+    const next=()=>{a|=0;a=(a+0x6D2B79F5)|0;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296};
+    const gauss=()=>{if(spare!=null){const z=spare;spare=null;return z}let u=0,v=0;while(u<=1e-12)u=next();v=next();const r=Math.sqrt(-2*Math.log(u)),th=2*Math.PI*v;spare=r*Math.sin(th);return r*Math.cos(th)};
+    return {next,gauss};
+  }
+  function shuffleIndices(n,rng){const a=Array.from({length:n},(_,i)=>i);for(let i=n-1;i>0;i--){const j=Math.floor(rng.next()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+  function fmtMs(ms){
+    if(!Number.isFinite(ms))return '∞';ms=Math.max(0,Math.floor(ms));
+    const sec=Math.floor(ms/1000),h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
+    return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;
+  }
+  function trLog(msg,cls=''){
+    const el=q('tr-log'),ts=new Date().toLocaleTimeString();const line=document.createElement('div');
+    if(cls)line.className=cls;line.textContent=`[${ts}] ${msg}`;el.appendChild(line);el.scrollTop=el.scrollHeight;
+  }
+  function setStage(stage,msg='',frac=null){
+    q('tr-k-stage').textContent=stage;q('tr-stage').innerHTML=`<b>${stage}</b>${msg?` · ${msg}`:''}`;
+    if(frac!=null)q('tr-bar').style.width=`${clamp(frac,0,1)*100}%`;
+  }
+
+  /* ---------- wall-clock budget ---------- */
+  function beginClock(){TR.sessionStartedAt=Date.now()}
+  function commitElapsed(){
+    if(!TR.state||!TR.sessionStartedAt)return;
+    TR.state.elapsedMs=(TR.state.elapsedMs||0)+(Date.now()-TR.sessionStartedAt);TR.sessionStartedAt=Date.now();
+  }
+  function elapsedMs(){return (TR.state?.elapsedMs||0)+(TR.running&&TR.sessionStartedAt?Date.now()-TR.sessionStartedAt:0)}
+  function budgetMs(){return Math.max(0,(TR.config?.budgetMin||0)*60000)}
+  function timeLeftMs(){const b=budgetMs();return b?Math.max(0,b-elapsedMs()):Infinity}
+  function finalReserveMs(){const b=budgetMs();return b?Math.min(18*60000,Math.max(4*60000,b*.16)):0}
+  function trainingBudgetLow(){return Number.isFinite(timeLeftMs())&&timeLeftMs()<=finalReserveMs()}
+  function hardBudgetExpired(){return Number.isFinite(timeLeftMs())&&timeLeftMs()<=0}
+  async function gate(){while(TR.paused&&!TR.stop){updateKPIs();await sleep(150)}if(TR.stop)throw new Error('__TRAINING_STOPPED__')}
+
+  function updateKPIs(){
+    window.__TETRIS_TRAINED_STATE=TR.state||null;const s=TR.state||{};
+    q('tr-k-cycle').textContent=s.lastCompletedCycle||0;q('tr-k-active').textContent=s.activeCycle||'—';
+    q('tr-k-champ').textContent=s.championVersion||0;q('tr-k-matches').textContent=(s.totalMatches||0)+TR.sessionMatches;
+    q('tr-k-samples').textContent=(s.totalSamples||0)+TR.sessionSamples;q('tr-k-replay').textContent=(s.replay||[]).length;
+    q('tr-k-score').textContent=s.bestPromotion==null?'—':(100*s.bestPromotion).toFixed(1)+'%';
+    const ah=s.anchorHistory||[],last=ah[ah.length-1];q('tr-k-anchor').textContent=last?(100*last.y).toFixed(1)+'%':'—';
+    q('tr-k-time').textContent=TR.config?.budgetMin?fmtMs(timeLeftMs()):'∞';drawTrainerCharts();
+  }
+  setInterval(()=>{if(TR.running)updateKPIs()},1000);
+
+  /* ---------- presets / config ---------- */
+  const PRESETS={
+    sprint:{budgetMin:15,evoBudget:3,evoGen:1,evoPop:6,evoMinPairs:1,evoMaxPairs:2,evoPatience:1,teacher:2,preEpochs:4,cycles:4,spMatches:3,replayMax:1500,promoMinPairs:4,promoMaxPairs:8,anchorPairs:2,styleMatches:1,levelPairs:1,finalPairs:3,maxPieces:220,hidden:48,batchSize:96,noPromoPatience:2},
+    quick:{budgetMin:30,evoBudget:6,evoGen:2,evoPop:7,evoMinPairs:1,evoMaxPairs:2,evoPatience:1,teacher:3,preEpochs:5,cycles:6,spMatches:4,replayMax:2000,promoMinPairs:4,promoMaxPairs:12,anchorPairs:2,styleMatches:1,levelPairs:1,finalPairs:4,maxPieces:300,hidden:48,batchSize:128,noPromoPatience:2},
+    standard:{budgetMin:60,evoBudget:12,evoGen:4,evoPop:8,evoMinPairs:1,evoMaxPairs:3,evoPatience:2,teacher:6,preEpochs:6,cycles:10,spMatches:5,replayMax:3000,promoMinPairs:6,promoMaxPairs:18,anchorPairs:3,styleMatches:2,levelPairs:1,finalPairs:8,maxPieces:450,hidden:48,batchSize:128,noPromoPatience:3},
+    serious:{budgetMin:180,evoBudget:35,evoGen:7,evoPop:10,evoMinPairs:1,evoMaxPairs:5,evoPatience:2,teacher:10,preEpochs:8,cycles:18,spMatches:8,replayMax:5000,promoMinPairs:8,promoMaxPairs:32,anchorPairs:4,styleMatches:4,levelPairs:2,finalPairs:16,maxPieces:650,hidden:64,batchSize:160,noPromoPatience:4}
+  };
+  function applyPreset(name){
+    const p=PRESETS[name]||PRESETS.standard;
+    const ids={budgetMin:'tr-budget-min',evoBudget:'tr-evo-budget',evoGen:'tr-evo-gen',evoPop:'tr-evo-pop',evoMinPairs:'tr-evo-min-pairs',evoMaxPairs:'tr-evo-max-pairs',evoPatience:'tr-evo-patience',teacher:'tr-teacher',preEpochs:'tr-pre-epochs',cycles:'tr-cycles',spMatches:'tr-sp-matches',replayMax:'tr-replay-max',promoMinPairs:'tr-promo-min-pairs',promoMaxPairs:'tr-promo-max-pairs',anchorPairs:'tr-anchor-pairs',styleMatches:'tr-style-matches',levelPairs:'tr-level-pairs',finalPairs:'tr-final-pairs',maxPieces:'tr-max-pieces',hidden:'tr-hidden',batchSize:'tr-batch-size',noPromoPatience:'tr-no-promo-patience'};
+    for(const [k,id] of Object.entries(ids))if(q(id)&&p[k]!=null)q(id).value=p[k];
+  }
+  q('tr-preset').addEventListener('change',e=>applyPreset(e.target.value));
+  const hc=Math.max(1,navigator.hardwareConcurrency||4),maxW=Math.min(12,hc);
+  q('tr-workers').innerHTML=Array.from({length:maxW},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
+  q('tr-workers').value=String(Math.max(1,Math.min(maxW,Math.floor(hc*.65)||1)));
+
+  function readConfig(){
+    const minP=Math.max(1,+q('tr-evo-min-pairs').value||1),maxP=Math.max(minP,+q('tr-evo-max-pairs').value||minP);
+    const pMin=Math.max(2,+q('tr-promo-min-pairs').value||4),pMax=Math.max(pMin,+q('tr-promo-max-pairs').value||pMin);
+    return {
+      preset:q('tr-preset').value,budgetMin:Math.max(5,+q('tr-budget-min').value||60),seed:(+q('tr-seed').value||1)>>>0,
+      workers:+q('tr-workers').value||1,maxPieces:Math.max(80,+q('tr-max-pieces').value||450),masterStyle:q('tr-master-style').value,
+      evoBudgetMin:Math.max(0,+q('tr-evo-budget').value||0),evoGen:Math.max(0,+q('tr-evo-gen').value||0),evoPop:Math.max(4,+q('tr-evo-pop').value||4),
+      evoMinPairs:minP,evoMaxPairs:maxP,evoPatience:Math.max(1,+q('tr-evo-patience').value||2),teacher:Math.max(0,+q('tr-teacher').value||0),
+      preEpochs:Math.max(0,+q('tr-pre-epochs').value||0),hidden:Math.max(8,+q('tr-hidden').value||48),batchSize:Math.max(16,+q('tr-batch-size').value||128),
+      lr:Math.max(.00001,+q('tr-lr').value||.0025),gradClip:Math.max(.1,+q('tr-grad-clip').value||3),weightDecay:1e-5,
+      cycles:Math.max(0,+q('tr-cycles').value||0),spMatches:Math.max(1,+q('tr-sp-matches').value||1),replayMax:Math.max(0,+q('tr-replay-max').value||0),
+      gamma:clamp(+q('tr-gamma').value||.999,.9,.99999),noPromoPatience:Math.max(1,+q('tr-no-promo-patience').value||3),
+      promoMinPairs:pMin,promoMaxPairs:pMax,promoThreshold:clamp(+q('tr-promo-threshold').value||.52,.5,.75),anchorPairs:Math.max(0,+q('tr-anchor-pairs').value||0),
+      styleMatches:Math.max(0,+q('tr-style-matches').value||0),levelPairs:Math.max(0,+q('tr-level-pairs').value||0),finalPairs:Math.max(0,+q('tr-final-pairs').value||0)
+    };
+  }
+  function writeConfigToUI(c){
+    if(!c)return;
+    const m={budgetMin:'tr-budget-min',seed:'tr-seed',workers:'tr-workers',maxPieces:'tr-max-pieces',masterStyle:'tr-master-style',evoBudgetMin:'tr-evo-budget',evoGen:'tr-evo-gen',evoPop:'tr-evo-pop',evoMinPairs:'tr-evo-min-pairs',evoMaxPairs:'tr-evo-max-pairs',evoPatience:'tr-evo-patience',teacher:'tr-teacher',preEpochs:'tr-pre-epochs',hidden:'tr-hidden',batchSize:'tr-batch-size',lr:'tr-lr',gradClip:'tr-grad-clip',cycles:'tr-cycles',spMatches:'tr-sp-matches',replayMax:'tr-replay-max',gamma:'tr-gamma',noPromoPatience:'tr-no-promo-patience',promoMinPairs:'tr-promo-min-pairs',promoMaxPairs:'tr-promo-max-pairs',promoThreshold:'tr-promo-threshold',anchorPairs:'tr-anchor-pairs',styleMatches:'tr-style-matches',levelPairs:'tr-level-pairs',finalPairs:'tr-final-pairs'};
+    for(const [k,id] of Object.entries(m))if(c[k]!=null&&q(id))q(id).value=c[k];
+  }
+  function setControls(running){
+    TR.running=running;q('tr-start').disabled=running;q('tr-pause').disabled=!running;q('tr-stop').disabled=!running;
+    q('tr-resume').disabled=running;q('tr-clear').disabled=running;q('tr-import').disabled=running;
+  }
+
+  /* ---------- worker runners ---------- */
+  function aiCfg({level=9,style='balanced',model=null,overlay=null,mlScale=1}={}){return {level,pps:6,style,mlModel:model,mlScale,overlay,overlayScale:2}}
+  function matchCfg(A,B,{seed,paired=true,independent=false,maxPieces}={}){return {A,B,baseSeed:(seed==null?TR.config.seed:seed)>>>0,pairedSeeds:paired,swapSides:false,simMode:'turbo',maxPieces:maxPieces||TR.config.maxPieces,maxSeconds:180,independentBags:independent}}
+  function splitIndices(n,k){const out=Array.from({length:k},()=>[]);for(let i=0;i<n;i++)out[i%k].push(i);return out.filter(a=>a.length)}
+  function makeTrainingWorker(){const w=new Worker(workerURL);TR.activeWorkers.add(w);const old=w.terminate.bind(w);w.terminate=()=>{TR.activeWorkers.delete(w);old()};return w}
+  function cancelWorkers(){for(const w of [...TR.activeWorkers]){try{w.terminate()}catch{}TR.activeWorkers.delete(w)}}
+  async function runBatch(config,count){
+    await gate();if(count<=0)return[];const wc=Math.max(1,Math.min(TR.config.workers,count)),chunks=splitIndices(count,wc);let done=0;
+    const jobs=chunks.map((indices,wi)=>new Promise((resolve,reject)=>{
+      const w=makeTrainingWorker(),jobId=`v2b-${Date.now()}-${Math.random()}-${wi}`;
+      w.onmessage=e=>{const m=e.data||{};if(m.jobId!==jobId)return;if(m.type==='progress'){done+=m.count||1;return}if(m.type==='batchResult'){w.terminate();resolve(m.results||[])}if(m.type==='error'){w.terminate();reject(new Error(m.message||'worker error'))}if(m.type==='cancelled'){w.terminate();resolve([])}};
+      w.onerror=e=>{w.terminate();reject(new Error(e.message||'worker error'))};w.postMessage({type:'batch',jobId,config,indices});
+    }));
+    const groups=await Promise.all(jobs),results=groups.flat().sort((a,b)=>a.matchIndex-b.matchIndex);TR.sessionMatches+=results.length;updateKPIs();return results;
+  }
+  async function runDetailed(config,index=0){
+    await gate();return await new Promise((resolve,reject)=>{const w=makeTrainingWorker(),jobId=`v2s-${Date.now()}-${Math.random()}`;
+      w.onmessage=e=>{const m=e.data||{};if(m.jobId!==jobId)return;if(m.type==='singleResult'){w.terminate();TR.sessionMatches++;updateKPIs();resolve(m.result)}if(m.type==='error'){w.terminate();reject(new Error(m.message||'worker error'))}};
+      w.onerror=e=>{w.terminate();reject(new Error(e.message||'worker error'))};w.postMessage({type:'single',jobId,config,matchIndex:index});});
+  }
+  function aggregate(results){
+    let aw=0,bw=0,d=0,aAtk=0,bAtk=0,aH=0,bH=0,aHo=0,bHo=0;
+    for(const r of results){if(r.winner==='A')aw++;else if(r.winner==='B')bw++;else d++;aAtk+=r.A.attackPer100||0;bAtk+=r.B.attackPer100||0;aH+=r.A.maxHeight||0;bH+=r.B.maxHeight||0;aHo+=r.A.maxHoles||0;bHo+=r.B.maxHoles||0}
+    const n=Math.max(1,results.length),score=(aw+.5*d)/n;return {n,aw,bw,d,score,aAtk:aAtk/n,bAtk:bAtk/n,aH:aH/n,bH:bH/n,aHo:aHo/n,bHo:bHo/n};
+  }
+
+  /* ---------- model / training ---------- */
+  function createModel(hidden,seed,input=FEAT){
+    const rng=makeRand(seed),s1=Math.sqrt(2/(input+hidden)),s2=Math.sqrt(2/(hidden+1));
+    return {version:2,input,hidden,w1:Array.from({length:input*hidden},()=>rng.gauss()*s1),b1:Array(hidden).fill(0),w2:Array.from({length:hidden},()=>rng.gauss()*s2),b2:[0]};
+  }
+  function upgradeModelInput(model,newInput=FEAT){
+    if(!model)return model;const old=clone(model),oldInp=old.input|0,h=old.hidden|0;if(oldInp===newInput)return old;if(oldInp<=0||oldInp>newInput)throw new Error(`model input ${oldInp} cannot upgrade to ${newInput}`);
+    const nw=Array(newInput*h).fill(0);for(let j=0;j<h;j++)for(let i=0;i<oldInp;i++)nw[j*newInput+i]=old.w1[j*oldInp+i]||0;
+    old.w1=nw;old.input=newInput;old.version=2;return old;
+  }
+  function forward(model,x){
+    const inp=model.input|0,h=model.hidden|0,hs=new Array(h);for(let j=0;j<h;j++){let a=model.b1[j]||0,o=j*inp;for(let i=0;i<inp;i++)a+=model.w1[o+i]*(x[i]||0);hs[j]=Math.tanh(a)}
+    let pre=model.b2[0]||0;for(let j=0;j<h;j++)pre+=model.w2[j]*hs[j];return {hs,y:Math.tanh(pre)};
+  }
+  function zeroGrad(model){return {w1:Array(model.w1.length).fill(0),b1:Array(model.b1.length).fill(0),w2:Array(model.w2.length).fill(0),b2:0}}
+  function addOutputGrad(model,x,cache,dLdy,g,weight=1){
+    const inp=model.input,h=model.hidden,y=cache.y,hs=cache.hs,dp=dLdy*(1-y*y)*weight;g.b2+=dp;
+    for(let j=0;j<h;j++){g.w2[j]+=dp*hs[j];const dh=dp*model.w2[j]*(1-hs[j]*hs[j]);g.b1[j]+=dh;const o=j*inp;for(let i=0;i<inp;i++)g.w1[o+i]+=dh*(x[i]||0)}
+  }
+  function applyGrad(model,g,n,lr,clip=3,wd=1e-5){
+    n=Math.max(1,n);let norm2=0;for(let i=0;i<g.w1.length;i++){g.w1[i]=g.w1[i]/n+wd*model.w1[i];norm2+=g.w1[i]*g.w1[i]}
+    for(let i=0;i<g.w2.length;i++){g.w2[i]=g.w2[i]/n+wd*model.w2[i];norm2+=g.w2[i]*g.w2[i]}
+    for(let i=0;i<g.b1.length;i++){g.b1[i]/=n;norm2+=g.b1[i]*g.b1[i]}g.b2/=n;norm2+=g.b2*g.b2;
+    const norm=Math.sqrt(norm2),scale=norm>clip?clip/norm:1;for(let i=0;i<model.w1.length;i++)model.w1[i]-=lr*g.w1[i]*scale;for(let i=0;i<model.w2.length;i++)model.w2[i]-=lr*g.w2[i]*scale;for(let i=0;i<model.b1.length;i++)model.b1[i]-=lr*g.b1[i]*scale;model.b2[0]-=lr*g.b2*scale;
+  }
+  function trainValueEpoch(model,data,lr,rng){
+    if(!data.length)return 0;const idx=shuffleIndices(data.length,rng),lim=Math.min(idx.length,30000),bs=TR.config.batchSize;let loss=0,seen=0;
+    for(let p=0;p<lim;p+=bs){const g=zeroGrad(model),end=Math.min(lim,p+bs);for(let z=p;z<end;z++){const s=data[idx[z]],t=clamp(s.y,-1,1),c=forward(model,s.x),err=c.y-t;loss+=err*err;addOutputGrad(model,s.x,c,err,g);seen++}applyGrad(model,g,end-p,lr,TR.config.gradClip,TR.config.weightDecay)}return loss/Math.max(1,seen);
+  }
+  function trainRankingEpoch(model,pairs,lr,rng){
+    if(!pairs.length)return 0;const idx=shuffleIndices(pairs.length,rng),lim=Math.min(idx.length,24000),bs=TR.config.batchSize;let loss=0,seen=0;
+    for(let p=0;p<lim;p+=bs){const g=zeroGrad(model),end=Math.min(lim,p+bs);for(let z=p;z<end;z++){const s=pairs[idx[z]],a=forward(model,s.good),b=forward(model,s.bad),k=2,w=s.w||1,diff=a.y-b.y;const kd=clamp(k*diff,-40,40);loss+=Math.log1p(Math.exp(-kd))*w;const d=-k/(1+Math.exp(kd));addOutputGrad(model,s.good,a,d,g,w);addOutputGrad(model,s.bad,b,-d,g,w);seen++}applyGrad(model,g,end-p,lr,TR.config.gradClip,TR.config.weightDecay)}return loss/Math.max(1,seen);
+  }
+  function rankingAccuracy(model,pairs){if(!pairs.length)return 0;let ok=0;for(const p of pairs)if(forward(model,p.good).y>forward(model,p.bad).y)ok++;return ok/pairs.length}
+  function modelDistance(a,b){if(!a||!b)return 0;let s=0,n=0;for(let i=0;i<a.w1.length;i++){const d=a.w1[i]-b.w1[i];s+=d*d;n++}for(let i=0;i<a.w2.length;i++){const d=a.w2[i]-b.w2[i];s+=d*d;n++}return Math.sqrt(s/Math.max(1,n))}
+
+  /* ---------- checkpoint / import-export ---------- */
+  function defaultState(cfg){return {schema:SCHEMA,engine:'AI-v5-FAIR-V2',created:new Date().toISOString(),config:cfg,stage:'INIT',activeCycle:0,lastCompletedCycle:0,cycle:0,overlay:Array(OVERLAY_FEAT).fill(0),champion:null,championVersion:0,hall:[],replay:[],replaySeen:0,styleHeads:{},levelScales:[0,.15,.25,.40,.58,.72,.86,1,1.12],totalMatches:0,totalSamples:0,bestPromotion:null,strengthHistory:[],lossHistory:[],anchorHistory:[],notes:[],elapsedMs:0,noPromoStreak:0,completed:false}}
+  function slimReplayIfNeeded(){if((TR.state?.replay||[]).length>1000){TR.state.replay=TR.state.replay.filter((_,i)=>i%2===0);trLog(`localStorage容量対策: Replayを${TR.state.replay.length}件へ縮小`,'tr-warning')}}
+  function saveCheckpoint(stage){
+    if(!TR.state)return;commitElapsed();TR.state.stage=stage||TR.state.stage;TR.state.cycle=TR.state.lastCompletedCycle||0;TR.state.totalMatches=(TR.state.totalMatches||0)+TR.sessionMatches;TR.state.totalSamples=(TR.state.totalSamples||0)+TR.sessionSamples;TR.sessionMatches=0;TR.sessionSamples=0;
+    try{localStorage.setItem(TKEY,JSON.stringify(TR.state))}catch(e){slimReplayIfNeeded();try{localStorage.setItem(TKEY,JSON.stringify(TR.state))}catch(e2){trLog('CheckpointをlocalStorageへ保存できません。Full State JSONを出力してください。','tr-bad')}}updateKPIs();
+  }
+  function loadCheckpoint(){try{const x=JSON.parse(localStorage.getItem(TKEY)||'null');return x&&x.schema===SCHEMA?x:null}catch{return null}}
+  function loadEmbedded(){try{const t=q('autotrain-embedded-model')?.textContent?.trim();if(!t||t==='null')return null;const x=JSON.parse(t);return x&&x.schema===SCHEMA?x:null}catch{return null}}
+  function download(name,text,type='application/json'){const a=document.createElement('a'),u=URL.createObjectURL(new Blob([text],{type}));a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+  function exportModel(){
+    if(!TR.state?.champion){trLog('ExportするChampionがありません','tr-warning');return}const pack={schema:2,engine:'AI-v5-FAIR-V2',created:new Date().toISOString(),featureCount:FEAT,championVersion:TR.state.championVersion,champion:TR.state.champion,overlay:TR.state.overlay,styleHeads:TR.state.styleHeads,levelScales:TR.state.levelScales,finalVsV5:TR.state.finalVsV5||null,styleMatrix:TR.state.styleMatrix||null,anchorHistory:TR.state.anchorHistory||[]};download(`tetris_ai_v2_model_champ${TR.state.championVersion||0}.json`,JSON.stringify(pack,null,2));
+  }
+  function exportState(){if(!TR.state)return;commitElapsed();download('tetris_ai_v2_full_state.json',JSON.stringify(TR.state,null,2));trLog('Full State JSONを出力しました','tr-good')}
+  function exportHTML(){if(!TR.state)return;commitElapsed();const root=document.documentElement.cloneNode(true),emb=root.querySelector('#autotrain-embedded-model');if(emb)emb.textContent=JSON.stringify(TR.state).replace(/<\/script/gi,'<\\/script');const log=root.querySelector('#tr-log');if(log)log.textContent='AutoTrainer V2 学習状態を埋め込んだ単一HTMLです。';download('tetris_ai_autotrainer_v2_trained.html','<!DOCTYPE html>\n'+root.outerHTML,'text/html');trLog('V2学習済み単一HTMLを出力しました','tr-good')}
+  function upgradePackModels(obj){
+    if(obj.champion)obj.champion=upgradeModelInput(obj.champion,FEAT);if(obj.styleHeads)for(const k of Object.keys(obj.styleHeads))if(obj.styleHeads[k])obj.styleHeads[k]=upgradeModelInput(obj.styleHeads[k],FEAT);if(Array.isArray(obj.hall))for(const h of obj.hall)if(h?.model)h.model=upgradeModelInput(h.model,FEAT);return obj;
+  }
+  function importObject(obj){
+    if(obj?.schema===SCHEMA&&obj.config&&('lastCompletedCycle'in obj||obj.engine==='AI-v5-FAIR-V2')){
+      TR.state=upgradePackModels(obj);TR.state.activeCycle=0;TR.state.replay=TR.state.replay||[];TR.state.anchorHistory=TR.state.anchorHistory||[];TR.config=TR.state.config;writeConfigToUI(TR.config);saveCheckpoint('IMPORTED_STATE');trLog(`V2 Full State読込: Champion v${TR.state.championVersion||0}, completed C${TR.state.lastCompletedCycle||0}`,'tr-good');return;
+    }
+    if(obj?.champion&&obj?.overlay){
+      const cfg=readConfig();TR.state=defaultState(cfg);TR.state.champion=upgradeModelInput(obj.champion,FEAT);TR.state.championVersion=Math.max(1,+obj.championVersion||(+q('tr-import-version').value||1));TR.state.overlay=(obj.overlay||[]).slice(0,OVERLAY_FEAT);while(TR.state.overlay.length<OVERLAY_FEAT)TR.state.overlay.push(0);TR.state.styleHeads={};for(const [k,m] of Object.entries(obj.styleHeads||{}))TR.state.styleHeads[k]=m?upgradeModelInput(m,FEAT):m;TR.state.levelScales=(obj.levelScales||TR.state.levelScales).slice();TR.state.notes.push(`Imported model pack ${obj.engine||'unknown'} ${obj.created||''}`);TR.state.stage='IMPORTED_MODEL';TR.config=cfg;saveCheckpoint('IMPORTED_MODEL');trLog(`Model JSON読込: ${obj.champion.input||'?'}→${FEAT} features, Champion label v${TR.state.championVersion}`,'tr-good');return;
+    }
+    throw new Error('対応するModel / State JSONではありません');
+  }
+
+  /* ---------- validation / baseline ---------- */
+  async function validateEngine(){
+    if(TR.state.engineValidated)return;setStage('VALIDATE_ENGINE','左右反転・同型対戦を検査',.02);trLog('Engine regression を開始');const A=aiCfg({level:9,style:'balanced'}),cfg=matchCfg(A,clone(A),{paired:true,maxPieces:160,seed:hash32(TR.config.seed^0x1111)}),rs=await runBatch(cfg,8),bad=rs.filter(r=>r.winner!==null);const pairs=new Map();let mismatch=0;for(const r of rs){const k=r.pairIndex;if(!pairs.has(k))pairs.set(k,[]);pairs.get(k).push(r)}for(const arr of pairs.values())if(arr.length===2){const x=arr[0],y=arr[1];if(x.winner!==y.winner||x.A.pieces!==y.A.pieces||x.B.pieces!==y.B.pieces||x.A.grossAttack!==y.A.grossAttack||x.B.grossAttack!==y.B.grossAttack)mismatch++}if(bad.length||mismatch)throw new Error(`Engine regression failed: non-draw=${bad.length}, mirror mismatch=${mismatch}`);TR.state.engineValidated=true;trLog('Engine regression PASS','tr-good');saveCheckpoint('VALIDATE_ENGINE');
+  }
+  async function baseline(){
+    if(TR.state.baseline)return;setStage('BASELINE','固定v5基準を測定',.05);const st=TR.config.masterStyle,A=aiCfg({level:9,style:st}),B=aiCfg({level:9,style:'balanced'}),pairs=Math.max(2,TR.config.evoMinPairs),rs=await runBatch(matchCfg(A,B,{paired:true,seed:hash32(TR.config.seed^0x2222)}),pairs*2),a=aggregate(rs);TR.state.baseline=a;trLog(`Baseline: ${(100*a.score).toFixed(1)}% atk/100 ${a.aAtk.toFixed(1)} vs ${a.bAtk.toFixed(1)}`);saveCheckpoint('BASELINE');
+  }
+
+  /* ---------- adaptive evolution ---------- */
+  function overlayMetrics(rs){const a=aggregate(rs),tie=.018*Math.tanh((a.aAtk-a.bAtk)/12)-.010*Math.tanh((a.aH-a.bH)/5)-.008*Math.tanh((a.aHo-a.bHo)/5);return {...a,fitness:a.score+tie}}
+  async function evalOverlayRaw(w,ref,seed,pairs){const A=aiCfg({level:9,style:TR.config.masterStyle,overlay:w}),B=aiCfg({level:9,style:TR.config.masterStyle,overlay:ref}),rs=await runBatch(matchCfg(A,B,{paired:true,seed}),pairs*2);return rs}
+  async function evolveOverlay(){
+    if(TR.config.evoGen<=0||TR.state.evolutionDone)return;setStage('EVOLVE_ADAPTIVE','successive halving + fixed anchor',.08);
+    const rng=makeRand(hash32(TR.config.seed^0xC0A5E5)),resume=TR.state.evolution||{},n=OVERLAY_FEAT;
+    let mean=(resume.mean||TR.state.overlay||Array(n).fill(0)).slice(0,n),sigma=resume.sigma||.55,best=(resume.best||TR.state.overlay||Array(n).fill(0)).slice(0,n),bestAnchorFit=Number.isFinite(resume.bestAnchorFit)?resume.bestAnchorFit:-Infinity,noImprove=resume.noImprove||0;
+    const startGen=resume.generation||0,anchor=Array(n).fill(0),evoDeadline=Math.min(Date.now()+TR.config.evoBudgetMin*60000,Date.now()+Math.max(0,timeLeftMs()-finalReserveMs()));
+    for(let gen=startGen;gen<TR.config.evoGen;gen++){
+      if(Date.now()>=evoDeadline||trainingBudgetLow()){trLog('Evolution時間上限に到達 → 次フェーズへ','tr-warning');break}await gate();const pop=[];setStage('EVOLVE_ADAPTIVE',`generation ${gen+1}/${TR.config.evoGen}`,.08+.15*(gen/TR.config.evoGen));
+      for(let k=0;k<TR.config.evoPop;k++){
+        if(Date.now()>=evoDeadline||trainingBudgetLow())break;const w=mean.map(v=>clamp(v+sigma*rng.gauss(),-3,3)),rs=await evalOverlayRaw(w,best,hash32(TR.config.seed+gen*1009+k*97),TR.config.evoMinPairs),ev=overlayMetrics(rs);pop.push({w,rs,ev});trLog(`Evo ${gen+1} cand ${k+1}: first ${(100*ev.score).toFixed(1)}% fit=${ev.fitness.toFixed(3)}`);
+      }
+      if(pop.length<2)break;pop.sort((a,b)=>b.ev.fitness-a.ev.fitness);const survivors=pop.slice(0,Math.max(2,Math.ceil(pop.length/2))),extra=Math.max(0,TR.config.evoMaxPairs-TR.config.evoMinPairs);
+      if(extra>0)for(let i=0;i<survivors.length;i++){
+        if(Date.now()>=evoDeadline||trainingBudgetLow())break;const e=survivors[i],more=await evalOverlayRaw(e.w,best,hash32(TR.config.seed^0xE7000000^gen*4099^i),extra);e.rs=e.rs.concat(more);e.ev=overlayMetrics(e.rs);trLog(`Evo ${gen+1} survivor ${i+1}: ${(100*e.ev.score).toFixed(1)}% fit=${e.ev.fitness.toFixed(3)}`);
+      }
+      pop.sort((a,b)=>b.ev.fitness-a.ev.fitness);const elite=pop.slice(0,Math.max(2,Math.floor(pop.length/3))),den=elite.reduce((s,_,j)=>s+(elite.length-j),0);mean=mean.map((_,i)=>elite.reduce((s,e,j)=>s+e.w[i]*(elite.length-j),0)/den);
+      const win=pop[0],anchorRs=await evalOverlayRaw(win.w,anchor,hash32(TR.config.seed^0xA11C0000^gen),Math.max(1,Math.min(TR.config.anchorPairs||2,TR.config.evoMaxPairs))),anchorEv=overlayMetrics(anchorRs);let improved=false;
+      if(anchorEv.fitness>bestAnchorFit+.002){bestAnchorFit=anchorEv.fitness;best=win.w.slice();sigma=Math.min(.8,sigma*1.04);noImprove=0;improved=true}else{sigma=Math.max(.08,sigma*.88);noImprove++}
+      TR.state.overlay=best.slice();TR.state.evolution={generation:gen+1,mean:mean.slice(),best:best.slice(),bestAnchorFit,sigma,noImprove};TR.state.strengthHistory.push({x:`E${gen+1}`,y:anchorEv.score});saveCheckpoint('EVOLVE_ADAPTIVE');trLog(`Evo ${gen+1} anchor ${(100*anchorEv.score).toFixed(1)}% ${improved?'NEW BEST':'no improve'} sigma=${sigma.toFixed(3)}`,improved?'tr-good':'');
+      if(noImprove>=TR.config.evoPatience){trLog(`Evolution early stop: ${noImprove}世代改善なし`,'tr-warning');break}
+    }
+    TR.state.evolutionDone=true;saveCheckpoint('EVOLVE_DONE');trLog(`Evolution終了: fixed-anchor bestFit=${Number.isFinite(bestAnchorFit)?bestAnchorFit.toFixed(3):'n/a'}`,'tr-good');
+  }
+
+  /* ---------- teacher ranking ---------- */
+  async function makeTeacherPairs(){
+    const pairs=[];let raw=0;if(TR.config.teacher<=0)return {pairs,raw};setStage('TEACHER_RANKING','候補の順位pairを収集',.25);
+    for(let m=0;m<TR.config.teacher;m++){
+      if(trainingBudgetLow())break;await gate();const sa=styles4[m%4],sb=styles4[(m+1)%4],A=aiCfg({level:9,style:sa,overlay:TR.state.overlay}),B=aiCfg({level:9,style:sb,overlay:TR.state.overlay}),cfg=matchCfg(A,B,{paired:false,independent:true,maxPieces:Math.min(TR.config.maxPieces,260),seed:hash32(TR.config.seed^0x70000000^m)}),r=await runDetailed(cfg,0);
+      for(const e of r.events||[]){const cs=(e.candidateSamples||[]).filter(c=>Array.isArray(c.f)&&c.f.length===FEAT).sort((a,b)=>b.score-a.score);raw+=cs.length;if(cs.length<2)continue;const best=cs[0];for(let i=1;i<Math.min(cs.length,4);i++){const gap=Math.abs(best.score-cs[i].score);pairs.push({good:best.f,bad:cs[i].f,w:clamp(.6+gap/8,.6,2)})}if(cs.length>=5)pairs.push({good:cs[1].f,bad:cs[cs.length-1].f,w:1})}
+      TR.sessionSamples=pairs.length;updateKPIs();trLog(`Teacher ${m+1}/${TR.config.teacher}: rankPairs=${pairs.length} rawCandidates=${raw}`);
+    }
+    return {pairs:pairs.slice(-40000),raw};
+  }
+  async function pretrainRanking(bundle){
+    if(TR.state.champion)return;setStage('RANK_PRETRAIN','Teacher順位をpairwise学習',.32);const all=bundle.pairs||[],rng=makeRand(hash32(TR.config.seed^0x1A11A710)),model=createModel(TR.config.hidden,hash32(TR.config.seed^0xABCDEF),FEAT);if(!all.length){TR.state.champion=model;TR.state.championVersion=1;saveCheckpoint('RANK_PRETRAIN');return}
+    const train=[],val=[];all.forEach((p,i)=>(i%10===0?val:train).push(p));let best=clone(model),bestAcc=-1,stale=0;
+    for(let e=0;e<TR.config.preEpochs;e++){
+      if(trainingBudgetLow())break;await gate();const loss=trainRankingEpoch(model,train,TR.config.lr,rng),acc=rankingAccuracy(model,val);TR.state.lossHistory.push({x:`P${e+1}`,y:loss});trLog(`Rank pretrain ${e+1}/${TR.config.preEpochs}: loss=${loss.toFixed(4)} valAcc=${(100*acc).toFixed(1)}%`);if(acc>bestAcc+.002){bestAcc=acc;best=clone(model);stale=0}else stale++;if(stale>=2){trLog('Ranking pretrain early stop: validation改善なし','tr-warning');break}}
+    TR.state.champion=best;TR.state.championVersion=1;TR.state.pretrainStats={rankPairs:all.length,valAcc:bestAcc};TR.sessionSamples=all.length;saveCheckpoint('RANK_PRETRAIN');
+  }
+
+  /* ---------- self-play / replay ---------- */
+  function outcomeTarget(result,side,event,gamma){let z=result.winner===side?1:(result.winner?-1:0),end=result.rounds||600,remain=Math.max(0,end-(event.t||0));z*=Math.pow(gamma,Math.min(1200,remain));const shaping=.025*Math.tanh((event.sent||0)/3)-.012*Math.tanh((event.holes||0)/8)-.008*Math.tanh(Math.max(0,(event.height||0)-14)/4);return clamp(z+shaping,-1,1)}
+  function compactSample(s){return {x:s.x.map(v=>Math.round(v*10000)/10000),y:Math.round(s.y*10000)/10000}}
+  function addReplay(data,rng){
+    const max=TR.config.replayMax;if(max<=0)return;TR.state.replay=TR.state.replay||[];TR.state.replaySeen=TR.state.replaySeen||0;const idx=shuffleIndices(data.length,rng),take=Math.min(data.length,1400);
+    for(let ii=0;ii<take;ii++){const s=compactSample(data[idx[ii]]);TR.state.replaySeen++;if(TR.state.replay.length<max)TR.state.replay.push(s);else{const j=Math.floor(rng.next()*TR.state.replaySeen);if(j<max)TR.state.replay[j]=s}}
+  }
+  function sampleReplay(n,rng){const r=TR.state.replay||[];if(!r.length||n<=0)return[];const idx=shuffleIndices(r.length,rng).slice(0,Math.min(n,r.length));return idx.map(i=>r[i])}
+  function pickOpponent(champion,cycle,m,rng){
+    const hall=TR.state.hall||[],u=rng.next();if(u<.15)return {model:null,overlay:null,label:'base-v5'};if(u<.45&&hall.length){const h=hall[Math.floor(rng.next()*hall.length)];return {model:h.model,overlay:TR.state.overlay,label:`HOF-v${h.version}`}}return {model:champion,overlay:TR.state.overlay,label:`champ-v${TR.state.championVersion}`};
+  }
+  async function selfPlayDataset(challenger,champion,cycle,count){
+    const data=[],rng=makeRand(hash32(TR.config.seed^0x5E1F0000^cycle));for(let m=0;m<count;m++){
+      if(trainingBudgetLow())break;await gate();const opp=pickOpponent(champion,cycle,m,rng),sa=styles4[(cycle+m)%4],sb=styles4[(cycle*3+m+1)%4],A=aiCfg({level:9,style:sa,model:challenger,overlay:TR.state.overlay,mlScale:1}),B=aiCfg({level:9,style:sb,model:opp.model,overlay:opp.overlay,mlScale:1}),cfg=matchCfg(A,B,{paired:false,independent:true,maxPieces:Math.min(TR.config.maxPieces,700),seed:hash32(TR.config.seed^cycle*65537^m*811)}),r=await runDetailed(cfg,0),isDraw=!r.winner;
+      for(const e of r.events||[])if(Array.isArray(e.mlFeatures)&&e.mlFeatures.length===FEAT){if(isDraw&&rng.next()>.40)continue;data.push({x:e.mlFeatures,y:outcomeTarget(r,e.side,e,TR.config.gamma)})}trLog(`Self-play C${cycle} ${m+1}/${count}: ${r.winner||'DRAW'} R=${r.rounds} opp=${opp.label} data=${data.length}`);
+    }return data.slice(-50000);
+  }
+  function pairPoint(r){return r.winner==='A'?1:r.winner==='B'?0:.5}
+  function pairScores(rs){const mp=new Map();for(const r of rs){const k=r.pairIndex??Math.floor((r.matchIndex||0)/2);if(!mp.has(k))mp.set(k,[]);mp.get(k).push(pairPoint(r))}return [...mp.values()].map(a=>a.reduce((x,y)=>x+y,0)/a.length)}
+  function ci90(vals){const n=vals.length;if(!n)return {mean:.5,lo:0,hi:1,se:.5};const mean=vals.reduce((a,b)=>a+b,0)/n;if(n<2)return {mean,lo:0,hi:1,se:.5};const variance=vals.reduce((s,v)=>s+(v-mean)*(v-mean),0)/(n-1),se=Math.sqrt(variance/n),m=1.645*se;return {mean,lo:clamp(mean-m,0,1),hi:clamp(mean+m,0,1),se}}
+  async function promotionSequential(challenger,champion,cycle){
+    const A=aiCfg({level:9,style:TR.config.masterStyle,model:challenger,overlay:TR.state.overlay}),B=aiCfg({level:9,style:TR.config.masterStyle,model:champion,overlay:TR.state.overlay}),all=[],pv=[];let pairs=0,decision=null;
+    while(pairs<TR.config.promoMaxPairs){
+      const step=Math.min(pairs?Math.max(2,TR.config.promoMinPairs):TR.config.promoMinPairs,TR.config.promoMaxPairs-pairs),rs=await runBatch(matchCfg(A,B,{paired:true,independent:false,seed:hash32(TR.config.seed^0x90000000^cycle^pairs*7919)}),step*2);all.push(...rs);pv.push(...pairScores(rs));pairs+=step;const a=aggregate(all),ci=ci90(pv);trLog(`Promotion C${cycle}: pairs=${pairs} score=${(100*a.score).toFixed(1)}% CI90=${(100*ci.lo).toFixed(1)}–${(100*ci.hi).toFixed(1)}%`);
+      if(pairs>=TR.config.promoMinPairs){if(a.score>=TR.config.promoThreshold&&ci.lo>=.50){decision=true;break}if(ci.hi<TR.config.promoThreshold){decision=false;break}if(trainingBudgetLow()){decision=a.score>=TR.config.promoThreshold;break}}
+    }
+    const ev=aggregate(all),ci=ci90(pv);if(decision==null)decision=ev.score>=TR.config.promoThreshold;return {...ev,ci,pairs,decision};
+  }
+  async function anchorBenchmark(cycle){
+    if(TR.config.anchorPairs<=0||!TR.state.champion||hardBudgetExpired())return null;const A=aiCfg({level:9,style:TR.config.masterStyle,model:TR.state.champion,overlay:TR.state.overlay}),B=aiCfg({level:9,style:TR.config.masterStyle}),rs=await runBatch(matchCfg(A,B,{paired:true,seed:hash32(TR.config.seed^0xBACE0000^cycle)}),TR.config.anchorPairs*2),a=aggregate(rs);TR.state.anchorHistory.push({x:`C${cycle}`,y:a.score,n:a.n});trLog(`Anchor C${cycle} Champion vs base-v5: ${(100*a.score).toFixed(1)}% (${a.aw}-${a.bw}-${a.d})`,'tr-good');return a;
+  }
+  async function selfPlayCycles(startCycle=1){
+    if(TR.config.cycles<=0)return;if(!TR.state.champion){TR.state.champion=createModel(TR.config.hidden,hash32(TR.config.seed^1234),FEAT);TR.state.championVersion=1}const rng=makeRand(hash32(TR.config.seed^0x51504C59));
+    for(let cycle=startCycle;cycle<=TR.config.cycles;cycle++){
+      if(trainingBudgetLow()){trLog('学習時間枠を使い切ったためSelf-play終了','tr-warning');break}await gate();TR.state.activeCycle=cycle;setStage('SELFPLAY',`cycle ${cycle}/${TR.config.cycles}`,.40+.32*((cycle-1)/Math.max(1,TR.config.cycles)));const champion=clone(TR.state.champion),challenger=clone(champion),fresh=await selfPlayDataset(challenger,champion,cycle,TR.config.spMatches);if(!fresh.length){TR.state.activeCycle=0;break}
+      const oldReplay=sampleReplay(Math.min((TR.state.replay||[]).length,Math.round(fresh.length*.75)),rng),train=fresh.concat(oldReplay);TR.sessionSamples+=fresh.length;let loss=0;for(let ep=0;ep<2;ep++)loss=trainValueEpoch(challenger,train,TR.config.lr*(ep?.58:1),rng);TR.state.lossHistory.push({x:`S${cycle}`,y:loss});const dist=modelDistance(challenger,champion),ev=await promotionSequential(challenger,champion,cycle);TR.state.bestPromotion=TR.state.bestPromotion==null?ev.score:Math.max(TR.state.bestPromotion,ev.score);TR.state.strengthHistory.push({x:`S${cycle}`,y:ev.score});
+      if(ev.decision){TR.state.champion=clone(challenger);TR.state.championVersion++;TR.state.hall.push({version:TR.state.championVersion,cycle,score:ev.score,model:clone(challenger)});if(TR.state.hall.length>12)TR.state.hall=TR.state.hall.slice(-12);TR.state.noPromoStreak=0;trLog(`PROMOTED C${cycle}: ${(100*ev.score).toFixed(1)}% (${ev.aw}-${ev.bw}-${ev.d}) pairs=${ev.pairs} Δ=${dist.toFixed(4)}`,'tr-good');await anchorBenchmark(cycle)}else{TR.state.noPromoStreak=(TR.state.noPromoStreak||0)+1;trLog(`REJECTED C${cycle}: ${(100*ev.score).toFixed(1)}% (${ev.aw}-${ev.bw}-${ev.d}) pairs=${ev.pairs} Δ=${dist.toFixed(4)}`,'tr-warning')}
+      addReplay(fresh,rng);TR.state.lastCompletedCycle=cycle;TR.state.activeCycle=0;TR.state.cycle=cycle;saveCheckpoint('SELFPLAY');if(TR.state.noPromoStreak>=TR.config.noPromoPatience){trLog(`Self-play early stop: ${TR.state.noPromoStreak} cycle連続で昇格なし`,'tr-warning');break}
+    }
+  }
+
+  /* ---------- post-training ---------- */
+  async function fineTuneStyles(){
+    if(TR.config.styleMatches<=0||!TR.state.champion||timeLeftMs()<90000)return;setStage('STYLE_FINE_TUNE','4 style headを短時間派生',.78);const rng=makeRand(hash32(TR.config.seed^0x57A1E));for(let si=0;si<4;si++){
+      if(timeLeftMs()<70000)break;const st=styles4[si],head=clone(TR.state.champion),data=[];for(let m=0;m<TR.config.styleMatches;m++){const A=aiCfg({level:9,style:st,model:head,overlay:TR.state.overlay}),B=aiCfg({level:9,style:styles4[(si+m+1)%4],model:TR.state.champion,overlay:TR.state.overlay}),r=await runDetailed(matchCfg(A,B,{paired:false,independent:true,maxPieces:Math.min(TR.config.maxPieces,400),seed:hash32(TR.config.seed^si*7193^m)}),0);for(const e of r.events||[])if(e.side==='A'&&Array.isArray(e.mlFeatures)&&e.mlFeatures.length===FEAT)data.push({x:e.mlFeatures,y:outcomeTarget(r,'A',e,TR.config.gamma)})}if(data.length)trainValueEpoch(head,data,TR.config.lr*.45,rng);const A=aiCfg({level:9,style:st,model:head,overlay:TR.state.overlay}),B=aiCfg({level:9,style:st,model:TR.state.champion,overlay:TR.state.overlay}),ev=aggregate(await runBatch(matchCfg(A,B,{paired:true,seed:hash32(TR.config.seed^0x51000000^si)}),4));TR.state.styleHeads[st]=ev.score>=.42?head:clone(TR.state.champion);trLog(`Style ${st}: ${(100*ev.score).toFixed(1)}% → ${ev.score>=.42?'採用':'rollback'}`)}saveCheckpoint('STYLE_FINE_TUNE');
+  }
+  async function calibrateLevels(){
+    if(TR.config.levelPairs<=0||!TR.state.champion||timeLeftMs()<90000)return;setStage('CALIBRATE_LEVELS','隣接Lvを軽量校正',.84);let scales=(TR.state.levelScales||[0,.15,.25,.40,.58,.72,.86,1,1.12]).slice();for(let lv=2;lv<=9;lv++){if(timeLeftMs()<50000)break;const up=aiCfg({level:lv,style:'balanced',model:TR.state.champion,overlay:TR.state.overlay,mlScale:scales[lv-1]}),dn=aiCfg({level:lv-1,style:'balanced',model:TR.state.champion,overlay:TR.state.overlay,mlScale:scales[lv-2]}),ev=aggregate(await runBatch(matchCfg(up,dn,{paired:true,seed:hash32(TR.config.seed^0x1E000000^lv)}),TR.config.levelPairs*2));if(ev.score<.56)scales[lv-1]=Math.min(1.8,scales[lv-1]*1.10+.02);else if(ev.score>.82)scales[lv-1]=Math.max(scales[lv-2]+.03,scales[lv-1]*.93);trLog(`Ladder Lv${lv}>${lv-1}: ${(100*ev.score).toFixed(1)}% scale=${scales[lv-1].toFixed(2)}`)}for(let i=1;i<scales.length;i++)scales[i]=Math.max(scales[i],scales[i-1]+.02);TR.state.levelScales=scales;saveCheckpoint('CALIBRATE_LEVELS');
+  }
+  async function finalRegression(){
+    if(TR.config.finalPairs<=0||!TR.state.champion||hardBudgetExpired())return;setStage('FINAL_REGRESSION','Champion vs base-v5（時間内で分割実行）',.92);const A=aiCfg({level:9,style:'balanced',model:TR.state.champion,overlay:TR.state.overlay,mlScale:TR.state.levelScales[8]}),B=aiCfg({level:9,style:'balanced'}),all=[];let done=0;
+    while(done<TR.config.finalPairs&&timeLeftMs()>15000){const step=Math.min(2,TR.config.finalPairs-done),rs=await runBatch(matchCfg(A,B,{paired:true,seed:hash32(TR.config.seed^0xF1A10000^done*101)}),step*2);all.push(...rs);done+=step;const a=aggregate(all);trLog(`FINAL ${done}/${TR.config.finalPairs} pairs: ${(100*a.score).toFixed(1)}%`)}if(all.length){const ev=aggregate(all);TR.state.finalVsV5=ev;trLog(`FINAL Champion vs base-v5: ${(100*ev.score).toFixed(1)}% (${ev.aw}-${ev.bw}-${ev.d}), atk/100 ${ev.aAtk.toFixed(1)} vs ${ev.bAtk.toFixed(1)}`,'tr-good')}saveCheckpoint('FINAL_REGRESSION');
+  }
+
+  /* ---------- charts ---------- */
+  function drawLine(canvas,arr,label){const c=canvas,ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d17';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#263149';ctx.lineWidth=1;for(let i=1;i<5;i++){const y=i*h/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}ctx.fillStyle='#93a4c4';ctx.font='12px system-ui';ctx.fillText(label,10,17);if(!arr?.length)return;const vals=arr.map(p=>+p.y||0),mn=Math.min(...vals),mx=Math.max(...vals),span=Math.max(.0001,mx-mn);ctx.strokeStyle='#eef4ff';ctx.lineWidth=2;ctx.beginPath();arr.forEach((p,i)=>{const x=10+(w-20)*(i/Math.max(1,arr.length-1)),y=h-12-(h-32)*((p.y-mn)/span);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle='#93a4c4';ctx.font='10px system-ui';ctx.fillText(`min ${mn.toFixed(3)}  max ${mx.toFixed(3)}`,10,h-3)}
+  function drawTrainerCharts(){if(!q('tr-chart-strength'))return;const strength=[...(TR.state?.strengthHistory||[]),...(TR.state?.anchorHistory||[])];drawLine(q('tr-chart-strength'),strength,'Promotion / fixed-v5 anchor score');drawLine(q('tr-chart-loss'),TR.state?.lossHistory||[],'Ranking / value training loss')}
+
+  /* ---------- pipeline ---------- */
+  async function runPipeline(resume=false){
+    if(TR.running)return;TR.config=resume?(TR.state?.config||readConfig()):readConfig();if(!resume||!TR.state)TR.state=defaultState(TR.config);else TR.config=TR.state.config||TR.config;TR.stop=false;TR.paused=false;setControls(true);q('tr-pause').textContent='一時停止';beginClock();trLog(`${resume?'RESUME':'START'} V2 preset=${TR.config.preset} budget=${TR.config.budgetMin}m seed=${TR.config.seed} workers=${TR.config.workers}`);
+    try{
+      await validateEngine();await baseline();
+      if(!TR.state.champion){await evolveOverlay();if(!trainingBudgetLow()){const teacher=await makeTeacherPairs();await pretrainRanking(teacher)}}
+      const next=Math.max(1,(TR.state.lastCompletedCycle||0)+1);if(next<=TR.config.cycles&&!trainingBudgetLow())await selfPlayCycles(next);
+      await fineTuneStyles();await calibrateLevels();await finalRegression();TR.state.completed=true;TR.state.activeCycle=0;saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。保存済み。':'V2パイプライン完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2 COMPLETE','tr-good');
+    }catch(err){
+      if(String(err.message||err)==='__TRAINING_STOPPED__'){TR.state.activeCycle=0;saveCheckpoint('STOPPED');setStage('STOPPED',`checkpoint済み。再開時はC${(TR.state.lastCompletedCycle||0)+1}からやり直します。`);trLog('安全停止しました','tr-warning')}else{saveCheckpoint('ERROR');setStage('ERROR',String(err.message||err));trLog(String(err.stack||err),'tr-bad')}
+    }finally{commitElapsed();cancelWorkers();setControls(false);TR.running=false;TR.paused=false;TR.sessionStartedAt=0;updateKPIs()}
+  }
+
+  q('tr-start').addEventListener('click',()=>{TR.state=null;TR.config=null;runPipeline(false)});
+  q('tr-pause').addEventListener('click',()=>{if(!TR.running)return;TR.paused=!TR.paused;q('tr-pause').textContent=TR.paused?'再開':'一時停止';trLog(TR.paused?'一時停止要求：現在のmatch終了後に待機':'学習を再開')});
+  q('tr-stop').addEventListener('click',()=>{TR.stop=true;TR.paused=false;trLog('安全停止要求：現在のmatch/batch終了後にcheckpointします','tr-warning')});
+  q('tr-resume').addEventListener('click',()=>{const x=loadCheckpoint()||loadEmbedded();if(!x){trLog('V2 Checkpointがありません','tr-warning');return}TR.state=upgradePackModels(x);TR.state.activeCycle=0;const ui=readConfig();TR.config={...(TR.state.config||{}),...ui};TR.state.config=TR.config;writeConfigToUI(TR.config);updateKPIs();trLog(`Checkpoint読込: completed C${TR.state.lastCompletedCycle||0}, Champion v${TR.state.championVersion||0}`);runPipeline(true)});
+  q('tr-export-model').addEventListener('click',exportModel);q('tr-export-state').addEventListener('click',exportState);q('tr-export-html').addEventListener('click',exportHTML);
+  q('tr-import').addEventListener('click',()=>q('tr-import-file').click());q('tr-import-file').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const obj=JSON.parse(await f.text());importObject(obj);updateKPIs()}catch(err){trLog(`Import失敗: ${err.message||err}`,'tr-bad')}e.target.value=''});
+  q('tr-clear').addEventListener('click',()=>{localStorage.removeItem(TKEY);TR.state=null;TR.config=readConfig();updateKPIs();trLog('V2 Checkpointを削除しました')});
+
+  const embedded=loadEmbedded(),saved=loadCheckpoint();if(embedded){TR.state=upgradePackModels(embedded);TR.config=TR.state.config||readConfig();writeConfigToUI(TR.config);trLog(`埋め込みV2 state読込 Champion v${TR.state.championVersion||0}`,'tr-good')}else if(saved){TR.state=upgradePackModels(saved);TR.config=TR.state.config||readConfig();writeConfigToUI(TR.config);trLog(`V2 Checkpointあり: completed C${TR.state.lastCompletedCycle||0}, stage=${TR.state.stage}`)}else{TR.config=readConfig();TR.state=defaultState(TR.config);trLog('AutoTrainer V2 ready')}
+  updateKPIs();
+})();
+</script>
+
+</body>
+</html>
