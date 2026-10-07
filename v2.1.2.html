@@ -2790,11 +2790,35 @@ window.downloadBatchCSV=()=>{
     // so old duplicate statistics never mix with new unique-seed evaluation.
     if(obj.schema===3&&obj.config&&obj.champion){
       const x=upgradePackModelsV21(clone(obj));
-      x.schema=SCHEMA;x.engine='AI-v5-FAIR-V2.1.2';x.config={...readConfig(),...(x.config||{})};
-      x.activeCycle=0;x.activeWork=null;x.cyclePhase='IDLE';x.completed=false;
-      x.rootHistory=x.rootHistory||[];x.hall=x.hall||[];x.replay=x.replay||[];x.notes=x.notes||[];
-      x.adaptiveLRScale=Number.isFinite(x.adaptiveLRScale)?x.adaptiveLRScale:1;
-      x.notes.push(`Migrated V2.1.1 at completed C${x.lastCompletedCycle||0}; incomplete promotion/cycle reset because mirror duplicates are no longer statistical samples.`);
+      const legacyMatches=x.totalMatches||0,legacyBest=x.bestPromotion,legacyStage=x.stage||'unknown';
+      x.schema=SCHEMA;x.engine='AI-v5-FAIR-V2.1.2c';x.config={...readConfig(),...(x.config||{})};
+
+      // Keep useful learned assets from completed work.
+      x.hall=x.hall||[];
+      x.replay=x.replay||[];
+      x.replaySeen=x.replaySeen||x.replay.length;
+      x.rootHistory=[];
+      x.anchorHistory=[];
+      x.strengthHistory=[];
+      x.bestPromotion=null;
+
+      // Old paired-mirror match counts / CIs and unfinished cycle state are not
+      // statistically compatible with V2.1.2c's unique-seed evaluation.
+      x.activeCycle=0;
+      x.activeWork=null;
+      x.cyclePhase='IDLE';
+      x.completed=false;
+      x.elapsedMs=0;
+      x.totalMatches=0;
+      x.noPromoStreak=0;
+      x.ambiguousStreak=0;
+      x.adaptiveLRScale=1;
+      x.engineValidated=false;
+      x.baseline=null;
+      x.stage='MIGRATED_V211';
+
+      x.notes=x.notes||[];
+      x.notes.push(`Migrated V2.1.1 at completed C${x.lastCompletedCycle||0}: kept Champion/Root/Overlay/HOF/Replay; discarded unfinished cycle plus legacy paired-mirror statistics. Legacy matches=${legacyMatches}, bestPromotion=${legacyBest}, stage=${legacyStage}. New time budget starts at 0.`);
       return x;
     }
     // V2 Full State migration. Incomplete V2 cycles are intentionally discarded.
@@ -3047,7 +3071,7 @@ window.downloadBatchCSV=()=>{
       if(mode==='calibrate'||mode==='full'){
         if(!TR.state.champion)throw new Error('CalibrationにはChampionをImportしてください');await fineTuneStylesV21();await calibrateLevelsV21();await deploymentRegressionV21();
       }
-      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2b完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2b COMPLETE','tr-good');
+      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2c完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2c COMPLETE','tr-good');
     }catch(err){
       if(String(err.message||err)==='__TRAINING_STOPPED__'){saveCheckpoint('STOPPED');setStage('STOPPED',TR.state?.activeWork?`C${TR.state.activeWork.cycle} ${TR.state.activeWork.phase} から再開可能`:`completed C${TR.state.lastCompletedCycle||0} から再開可能`);trLog('安全停止しました。フェーズ途中Checkpointを保持しています','tr-warning')}else{saveCheckpoint('ERROR');setStage('ERROR',String(err.message||err));trLog(String(err.stack||err),'tr-bad')}
     }finally{commitElapsed();cancelWorkers();setControls(false);TR.running=false;TR.paused=false;TR.sessionStartedAt=0;updateKPIs()}
@@ -3089,6 +3113,16 @@ window.downloadBatchCSV=()=>{
       runPipeline(true);
       return;
     }
+    if(TR.state?.champion && (TR.state?.stage==='IMPORTED_STATE'||TR.state?.stage==='MIGRATED_V211')){
+      const ui=readConfig();
+      TR.config={...(TR.state.config||{}),...ui};
+      TR.state.config=TR.config;
+      ensureRootState();
+      saveCheckpoint('MIGRATED_V211_READY');
+      trLog(`Full Stateの有効資産を引継ぎ: completed C${TR.state.lastCompletedCycle||0}, Champion v${TR.state.championVersion||0}, Replay ${(TR.state.replay||[]).length}. 旧mirror統計/途中cycle/旧経過時間は破棄済み。`,'tr-good');
+      runPipeline(true);
+      return;
+    }
     TR.state=null;TR.config=null;runPipeline(false);
   });
   q('tr-pause').addEventListener('click',()=>{if(!TR.running)return;TR.paused=!TR.paused;q('tr-pause').textContent=TR.paused?'再開':'一時停止';trLog(TR.paused?'一時停止要求：現在のmatch終了後に待機':'学習を再開')});
@@ -3110,7 +3144,7 @@ window.downloadBatchCSV=()=>{
         if(v2?.champion)trLog('旧V2 Checkpointを検出。必要ならFull State JSONとしてImportしてください。','tr-warning');
       }
     }catch{}
-    trLog('AutoTrainer V2.1.2b ready');
+    trLog('AutoTrainer V2.1.2c ready');
   }
   updateKPIs();
 })();
