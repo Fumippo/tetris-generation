@@ -3047,13 +3047,50 @@ window.downloadBatchCSV=()=>{
       if(mode==='calibrate'||mode==='full'){
         if(!TR.state.champion)throw new Error('CalibrationにはChampionをImportしてください');await fineTuneStylesV21();await calibrateLevelsV21();await deploymentRegressionV21();
       }
-      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2a完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2a COMPLETE','tr-good');
+      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2b完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2b COMPLETE','tr-good');
     }catch(err){
       if(String(err.message||err)==='__TRAINING_STOPPED__'){saveCheckpoint('STOPPED');setStage('STOPPED',TR.state?.activeWork?`C${TR.state.activeWork.cycle} ${TR.state.activeWork.phase} から再開可能`:`completed C${TR.state.lastCompletedCycle||0} から再開可能`);trLog('安全停止しました。フェーズ途中Checkpointを保持しています','tr-warning')}else{saveCheckpoint('ERROR');setStage('ERROR',String(err.message||err));trLog(String(err.stack||err),'tr-bad')}
     }finally{commitElapsed();cancelWorkers();setControls(false);TR.running=false;TR.paused=false;TR.sessionStartedAt=0;updateKPIs()}
   }
 
-  q('tr-start').addEventListener('click',()=>{TR.state=null;TR.config=null;runPipeline(false)});
+  q('tr-start').addEventListener('click',()=>{
+    // If a Model JSON was imported, treat it as a fresh Root/Champion seed:
+    // keep the imported model, but start a new training history/budget from that state.
+    if(TR.state?.champion && (TR.state?.stage==='IMPORTED_MODEL'||TR.state?.stage==='IMPORTED_MODEL_READY')){
+      const ui=readConfig();
+      TR.config={...(TR.state.config||{}),...ui};
+      TR.state.config=TR.config;
+      TR.state.elapsedMs=0;
+      TR.state.totalMatches=0;
+      TR.state.totalSamples=0;
+      TR.state.bestPromotion=null;
+      TR.state.strengthHistory=[];
+      TR.state.lossHistory=[];
+      TR.state.anchorHistory=[];
+      TR.state.rootHistory=[];
+      TR.state.hall=[];
+      TR.state.replay=[];
+      TR.state.replaySeen=0;
+      TR.state.lastCompletedCycle=0;
+      TR.state.cycle=0;
+      TR.state.activeCycle=0;
+      TR.state.activeWork=null;
+      TR.state.cyclePhase='IDLE';
+      TR.state.completed=false;
+      TR.state.noPromoStreak=0;
+      TR.state.ambiguousStreak=0;
+      TR.state.adaptiveLRScale=1;
+      TR.state.rootChampion=clone(TR.state.champion);
+      TR.state.rootVersion=TR.state.championVersion||1;
+      TR.state.rootOverlay=clone(TR.state.overlay||Array(OVERLAY_FEAT).fill(0));
+      TR.state.stage='IMPORTED_MODEL_READY';
+      saveCheckpoint('IMPORTED_MODEL_READY');
+      trLog(`Imported Champion v${TR.state.championVersion||0} をRootとして新規学習開始（旧Replay/経過時間/統計は引き継ぎません）`,'tr-good');
+      runPipeline(true);
+      return;
+    }
+    TR.state=null;TR.config=null;runPipeline(false);
+  });
   q('tr-pause').addEventListener('click',()=>{if(!TR.running)return;TR.paused=!TR.paused;q('tr-pause').textContent=TR.paused?'再開':'一時停止';trLog(TR.paused?'一時停止要求：現在のmatch終了後に待機':'学習を再開')});
   q('tr-stop').addEventListener('click',()=>{TR.stop=true;TR.paused=false;trLog('安全停止要求：現在のmatch/batch終了後にCheckpointします','tr-warning')});
   q('tr-resume').addEventListener('click',()=>{const x=loadCheckpoint()||loadEmbedded();if(!x){trLog('V2.1 Checkpointがありません','tr-warning');return}TR.state=migrateStateV21(x);const ui=readConfig();TR.config={...(TR.state.config||{}),...ui};TR.state.config=TR.config;ensureRootState();writeConfigToUI(TR.config);updateKPIs();trLog(`Checkpoint読込: completed C${TR.state.lastCompletedCycle||0}, active=${TR.state.activeWork?`C${TR.state.activeWork.cycle}/${TR.state.activeWork.phase}`:'none'}, Champion v${TR.state.championVersion||0}, Root v${TR.state.rootVersion||0}`);runPipeline(true)});
@@ -3073,7 +3110,7 @@ window.downloadBatchCSV=()=>{
         if(v2?.champion)trLog('旧V2 Checkpointを検出。必要ならFull State JSONとしてImportしてください。','tr-warning');
       }
     }catch{}
-    trLog('AutoTrainer V2.1.2a ready');
+    trLog('AutoTrainer V2.1.2b ready');
   }
   updateKPIs();
 })();
