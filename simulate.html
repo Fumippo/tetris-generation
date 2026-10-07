@@ -1,0 +1,2197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tetris Match Telemetry Collector</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#080b10;--panel:#111722;--panel2:#0b111a;--line:#2b3548;
+  --text:#eef4ff;--muted:#9ba9bc;--a:#63c9ff;--b:#ff9670;--good:#6bd88b;--warn:#ffd166;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1120px;margin:auto;padding:20px}
+h1{font-size:25px;margin:0 0 6px} h2{font-size:17px;margin:0 0 12px}
+p{color:var(--muted);line-height:1.55;margin:6px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--muted)}
+input,select,button{font:inherit}
+input,select{width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line);background:#080d15;color:var(--text)}
+button{padding:9px 12px;border:1px solid #3c4b65;border-radius:9px;background:#172238;color:var(--text);font-weight:700;cursor:pointer}
+button:hover{border-color:#7aa7ff} button:disabled{opacity:.42;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.presets{display:flex;flex-wrap:wrap;gap:7px;margin:9px 0 13px}
+.status{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+.progress{height:11px;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#080d15;margin-top:10px}
+.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--a),#9c88ff)}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px}
+.kpi span{display:block;color:var(--muted);font-size:10px}.kpi b{font-size:18px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+th,td{padding:7px 6px;border-bottom:1px solid #242e40;text-align:right}
+th:first-child,td:first-child{text-align:left}
+.a{color:var(--a)} .b{color:var(--b)}
+.note{font-size:11px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:7px;margin-top:19px;color:var(--text)}
+.check input{width:auto;margin:0}
+@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<main>
+<h1>Tetris Match Telemetry Collector</h1>
+<p>内蔵AI v5（Lv1〜9）の試合内容を収集する独立実験器。学習済みModel、Champion、Replay、Full State、IndexedDBは一切使用しません。</p>
+
+<section class="card">
+<h2>1. 対戦条件</h2>
+<div class="presets">
+  <button data-pair="5,6">Lv5 vs 6</button>
+  <button data-pair="6,7">Lv6 vs 7</button>
+  <button data-pair="7,8">Lv7 vs 8</button>
+  <button data-pair="8,9">Lv8 vs 9</button>
+  <button data-pair="6,8">Lv6 vs 8</button>
+  <button data-pair="5,8">Lv5 vs 8</button>
+</div>
+<div class="grid">
+<label>CPU A Level
+<select id="levelA"></select>
+</label>
+<label>CPU B Level
+<select id="levelB"></select>
+</label>
+<label>CPU A Style
+<select id="styleA">
+<option value="balanced">Balanced</option><option value="aggressive">Aggressive</option>
+<option value="defensive">Defensive</option><option value="tspin">T-Spin</option>
+</select>
+</label>
+<label>CPU B Style
+<select id="styleB">
+<option value="balanced">Balanced</option><option value="aggressive">Aggressive</option>
+<option value="defensive">Defensive</option><option value="tspin">T-Spin</option>
+</select>
+</label>
+<label>試合数
+<input id="matches" type="number" min="1" max="2000" step="1" value="50">
+</label>
+<label>Max rounds
+<input id="rounds" type="number" min="20" max="2000" step="10" value="450">
+</label>
+<label>Workers
+<input id="workers" type="number" min="1" max="12" step="1" value="4">
+</label>
+<label>Base seed
+<input id="seed" type="number" step="1" value="2908160852">
+</label>
+<label class="check"><input id="keepRaw" type="checkbox" checked> roundごとの生Telemetryを保持</label>
+</div>
+<p class="note">FAIR TURBO / shared bag / paired mirrorなし。mlModel=null、overlay=null固定。同じLevel・Style同士は基準線としては使えますが、特にLv5以上では同一挙動になりやすいので強弱データ収集にはLv差を付ける方が有用です。</p>
+<div class="actions">
+<button id="start">収集開始</button>
+<button id="stop" disabled>停止</button>
+</div>
+<div class="progress"><div id="bar"></div></div>
+<div id="status" class="status" style="margin-top:10px">未実行</div>
+</section>
+
+<section class="card">
+<h2>2. 現在の集計</h2>
+<div class="kpis">
+<div class="kpi"><span>A WIN</span><b id="aw">0</b></div>
+<div class="kpi"><span>B WIN</span><b id="bw">0</b></div>
+<div class="kpi"><span>DRAW</span><b id="dw">0</b></div>
+<div class="kpi"><span>DRAW RATE</span><b id="dr">—</b></div>
+<div class="kpi"><span>AVG ROUNDS</span><b id="ar">—</b></div>
+<div class="kpi"><span>AVG WALL / MATCH</span><b id="tm">—</b></div>
+</div>
+<table>
+<thead><tr><th>内容指標</th><th class="a">CPU A</th><th class="b">CPU B</th><th>A-B</th></tr></thead>
+<tbody id="metricRows"></tbody>
+</table>
+<p class="note">ここでは総合content scoreを作りません。重みを先に決めず、生の試合内容を集めるための画面です。</p>
+</section>
+
+<section class="card">
+<h2>3. 出力</h2>
+<div class="actions">
+<button id="json" disabled>JSONを出力</button>
+<button id="matchCsv" disabled>試合単位CSV</button>
+<button id="roundCsv" disabled>round単位CSV</button>
+</div>
+<p class="note">round CSVには各round×A/BのTelemetryをそのまま出します。「生Telemetryを保持」をOFFにしたrunではround CSVは出せません。</p>
+</section>
+
+<section class="card">
+<h2>4. 完了ログ</h2>
+<div id="log" class="status">—</div>
+</section>
+</main>
+
+<script id="worker-code" type="text/plain">
+'use strict';
+const COLS = 10, VISIBLE_ROWS = 20, HIDDEN_ROWS = 4, ROWS = VISIBLE_ROWS + HIDDEN_ROWS;
+const PIECE_NAMES = ['I','J','L','O','S','T','Z'];
+const COLORS = {
+  I:'#53c7e8',J:'#5a78e8',L:'#e99a45',O:'#e8cc55',S:'#61c77a',T:'#a673db',Z:'#e46672',G:'#606875'
+};
+const MODE_LABEL = {marathon:'MARATHON', sprint:'SPRINT 40L', vs_cpu:'VS CPU', cpu_cpu:'CPU vs CPU'};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const deepBoard=b=>b.map(r=>r.slice());
+const now=()=>performance.now();
+
+class PRNG{
+  constructor(seed){this.state=(seed>>>0)||0x12345678}
+  next(){
+    let t=this.state+=0x6D2B79F5;
+    t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);
+    return ((t^t>>>14)>>>0)/4294967296;
+  }
+  int(n){return Math.floor(this.next()*n)}
+  range(a,b){return a+(b-a)*this.next()}
+}
+class Bag{
+  constructor(rng){this.rng=rng;this.q=[]}
+  fill(){
+    const a=PIECE_NAMES.slice();
+    for(let i=a.length-1;i>0;i--){const j=this.rng.int(i+1);[a[i],a[j]]=[a[j],a[i]]}
+    this.q.push(...a);
+  }
+  next(){if(this.q.length<7)this.fill();return this.q.shift()}
+}
+
+/* SRS-compatible piece states in 4x4 local coordinates */
+const SHAPES={
+I:[
+ [[0,1],[1,1],[2,1],[3,1]], [[2,0],[2,1],[2,2],[2,3]],
+ [[0,2],[1,2],[2,2],[3,2]], [[1,0],[1,1],[1,2],[1,3]]
+],
+O:[
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]],
+ [[1,0],[2,0],[1,1],[2,1]], [[1,0],[2,0],[1,1],[2,1]]
+],
+T:[
+ [[1,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[2,1],[1,2]], [[1,0],[0,1],[1,1],[1,2]]
+],
+J:[
+ [[0,0],[0,1],[1,1],[2,1]], [[1,0],[2,0],[1,1],[1,2]],
+ [[0,1],[1,1],[2,1],[2,2]], [[1,0],[1,1],[0,2],[1,2]]
+],
+L:[
+ [[2,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[1,2],[2,2]],
+ [[0,1],[1,1],[2,1],[0,2]], [[0,0],[1,0],[1,1],[1,2]]
+],
+S:[
+ [[1,0],[2,0],[0,1],[1,1]], [[1,0],[1,1],[2,1],[2,2]],
+ [[1,1],[2,1],[0,2],[1,2]], [[0,0],[0,1],[1,1],[1,2]]
+],
+Z:[
+ [[0,0],[1,0],[1,1],[2,1]], [[2,0],[1,1],[2,1],[1,2]],
+ [[0,1],[1,1],[1,2],[2,2]], [[1,0],[0,1],[1,1],[0,2]]
+]
+};
+/* y is positive downward, therefore standard SRS y offsets are inverted */
+const KICKS_JLSTZ={
+ '0>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '1>0':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '1>2':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+ '2>1':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+ '2>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]],
+ '3>2':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '3>0':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+ '0>3':[[0,0],[1,0],[1,-1],[0,2],[1,2]]
+};
+const KICKS_I={
+ '0>1':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '1>0':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '1>2':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]],
+ '2>1':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '2>3':[[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+ '3>2':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+ '3>0':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+ '0>3':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]]
+};
+function cellsOf(piece){
+  return SHAPES[piece.type][piece.rot].map(([dx,dy])=>[piece.x+dx,piece.y+dy]);
+}
+function collides(board,piece){
+  for(const [x,y] of cellsOf(piece)){
+    if(x<0||x>=COLS||y>=ROWS)return true;
+    if(y>=0&&board[y][x])return true;
+  }
+  return false;
+}
+function grounded(board,p){const q={...p,y:p.y+1};return collides(board,q)}
+function tryRotateOn(board,p,dir){
+  if(p.type==='O')return {piece:{...p,rot:(p.rot+(dir>0?1:3))%4},kickIndex:0};
+  const nr=(p.rot+(dir>0?1:3))%4,key=`${p.rot}>${nr}`;
+  const kicks=p.type==='I'?KICKS_I[key]:KICKS_JLSTZ[key];
+  for(let i=0;i<(kicks||[[0,0]]).length;i++){
+    const [kx,ky]=(kicks||[[0,0]])[i],q={...p,x:p.x+kx,y:p.y+ky,rot:nr};
+    if(!collides(board,q))return {piece:q,kickIndex:i};
+  }
+  return null;
+}
+function dropY(board,p){let q={...p};while(!collides(board,{...q,y:q.y+1}))q.y++;return q}
+function makeBoard(){return Array.from({length:ROWS},()=>Array(COLS).fill(null))}
+function clearCompletedLines(board){
+  // Remove all completed rows as one batch. Adding empty rows after each
+  // splice shifts the indexes of the remaining completed rows and can skip one.
+  const remaining=board.filter(row=>!row.every(Boolean));
+  const lines=ROWS-remaining.length;
+  if(lines>0){
+    const empty=Array.from({length:lines},()=>Array(COLS).fill(null));
+    board.splice(0,board.length,...empty,...remaining);
+  }
+  return lines;
+}
+
+/* =========================================================
+   Audio
+========================================================= */
+class SoundFX{
+  constructor(){this.ctx=null;this.enabled=true}
+  tone(freq=440,dur=.05,type='sine',gain=.035){
+    if(!this.enabled)return;
+    try{
+      if(!this.ctx)this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+      if(this.ctx.state==='suspended')this.ctx.resume();
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain(),t=this.ctx.currentTime;
+      o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(gain,t);
+      g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(this.ctx.destination);o.start(t);o.stop(t+dur);
+    }catch(_){}
+  }
+  move(){this.tone(180,.025,'square',.018)}
+  rotate(){this.tone(260,.035,'square',.02)}
+  hard(){this.tone(95,.07,'triangle',.045)}
+  clear(n){this.tone(n===4?700:480+n*65,.12,'sine',.05)}
+  tspin(){this.tone(850,.16,'triangle',.06)}
+  ko(){this.tone(80,.45,'sawtooth',.07)}
+}
+const sfx=new SoundFX();
+
+/* =========================================================
+   T-Spin, scoring and attack
+========================================================= */
+function occupiedOrWall(board,x,y){return x<0||x>=COLS||y<0||y>=ROWS||!!board[y][x]}
+function detectTSpin(board,p,lastWasRotate,lastKickIndex){
+  if(p.type!=='T'||!lastWasRotate)return {type:'none',corners:0};
+  const cx=p.x+1,cy=p.y+1;
+  const c=[
+    occupiedOrWall(board,cx-1,cy-1),occupiedOrWall(board,cx+1,cy-1),
+    occupiedOrWall(board,cx-1,cy+1),occupiedOrWall(board,cx+1,cy+1)
+  ];
+  const count=c.filter(Boolean).length;if(count<3)return {type:'none',corners:count};
+  const fronts={0:[0,1],1:[1,3],2:[2,3],3:[0,2]}[p.rot];
+  const frontCount=fronts.reduce((s,i)=>s+(c[i]?1:0),0);
+  return {type:(frontCount===2||lastKickIndex===4)?'full':'mini',corners:count};
+}
+function attackFor(lines,tspinType,b2bBefore,combo,perfectClear){
+  let atk=0;
+  if(tspinType==='full')atk=[0,2,4,6][lines]||0;
+  else if(tspinType==='mini')atk=lines===1?1:0;
+  else atk=[0,0,1,2,4][lines]||0;
+  const difficult=(lines===4||(tspinType!=='none'&&lines>0));
+  if(difficult&&b2bBefore)atk+=1;
+  if(combo>0){
+    const table=[0,0,1,1,2,2,3,3,4,4,5,5,5];
+    atk+=table[Math.min(combo,table.length-1)];
+  }
+  if(perfectClear)atk+=10;
+  return atk;
+}
+function scoreFor(lines,tspinType,b2bBefore,combo,level,perfectClear){
+  let s=0;
+  if(tspinType==='full')s=[400,800,1200,1600][lines]||0;
+  else if(tspinType==='mini')s=lines===1?200:100;
+  else s=[0,100,300,500,800][lines]||0;
+  if((lines===4||(tspinType!=='none'&&lines>0))&&b2bBefore)s=Math.floor(s*1.5);
+  if(combo>0)s+=50*combo;
+  if(perfectClear)s+=3500;
+  return s*Math.max(1,level);
+}
+
+/* =========================================================
+   Game board
+========================================================= */
+class TetrisGame{
+  constructor(opts){
+    Object.assign(this,opts);
+    this.rng=new PRNG(opts.seed);
+    this.garbageRng=new PRNG((opts.seed^0x9E3779B9)>>>0);
+    this.bag=new Bag(this.rng);
+    this.reset();
+  }
+  reset(){
+    this.board=makeBoard();this.queue=[];while(this.queue.length<7)this.queue.push(this.bag.next());
+    this.hold=null;this.holdUsed=false;this.active=null;this.gameOver=false;this.finished=false;
+    this.score=0;this.lines=0;this.level=1;this.combo=-1;this.b2b=false;this.maxCombo=0;
+    this.pieces=0;this.attacks=0;this.received=0;this.pendingGarbage=0;
+    this.tetrisCount=0;this.tspinCount=0;this.tspinDouble=0;this.perfectClears=0;
+    this.gravityAcc=0;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    this.startTime=now();this.elapsed=0;this.eventText='';this.aiThought='';this.lastCandidates=[];this.aiControlled=false;
+    this.spawn();
+  }
+  spawn(type=null){
+    if(!type){
+      type=this.queue.shift();while(this.queue.length<7)this.queue.push(this.bag.next());
+    }
+    this.active={type,x:3,y:1,rot:0};
+    this.holdUsed=false;this.lockAcc=0;this.lockResets=0;this.lastAction='spawn';this.lastKickIndex=0;
+    if(collides(this.board,this.active)){this.topOut();return false}
+    if(this.onSpawn)this.onSpawn(this);
+    return true;
+  }
+  topOut(){
+    if(this.gameOver)return;this.gameOver=true;this.finished=true;sfx.ko();
+    if(this.onTopOut)this.onTopOut(this);
+  }
+  gravityMs(){
+    if(this.mode==='sprint'||this.mode==='vs_cpu'||this.mode==='cpu_cpu')return 800;
+    const l=Math.max(1,this.level);
+    return Math.max(16,1000*Math.pow(0.8-((l-1)*0.007),l-1));
+  }
+  move(dx,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,x:this.active.x+dx};
+    if(collides(this.board,q))return false;
+    const wasGround=grounded(this.board,this.active);this.active=q;this.lastAction='move';
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.move();return true;
+  }
+  softDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const q={...this.active,y:this.active.y+1};
+    if(collides(this.board,q))return false;
+    this.active=q;this.lastAction='down';if(!fromAI)this.score+=1;return true;
+  }
+  rotate(dir,fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    const wasGround=grounded(this.board,this.active);
+    const res=tryRotateOn(this.board,this.active,dir);if(!res)return false;
+    this.active=res.piece;this.lastAction='rotate';this.lastKickIndex=res.kickIndex;
+    if(wasGround&&this.lockResets<15){this.lockAcc=0;this.lockResets++}
+    if(!fromAI)sfx.rotate();return true;
+  }
+  hardDrop(fromAI=false){
+    if(this.gameOver||!this.active)return false;
+    let d=0;while(this.softDrop(true))d++;
+    if(!fromAI)this.score+=d*2;
+    this.lastAction=this.lastAction==='rotate'?'rotate':'hard';
+    sfx.hard();this.lockPiece();return true;
+  }
+  doHold(){
+    if(this.gameOver||this.holdUsed||!this.active)return false;
+    const old=this.active.type;
+    if(this.hold===null){this.hold=old;this.active=null;this.spawn()}
+    else{const h=this.hold;this.hold=old;this.active=null;this.spawn(h)}
+    this.holdUsed=true;this.lastAction='hold';return true;
+  }
+  lockPiece(){
+    if(!this.active||this.gameOver)return;
+    const p={...this.active};
+    const tspin=detectTSpin(this.board,p,this.lastAction==='rotate',this.lastKickIndex);
+    for(const [x,y] of cellsOf(p)){
+      if(y<0){this.topOut();return}
+      this.board[y][x]=p.type;
+    }
+    this.pieces++;
+    const lines=clearCompletedLines(this.board);
+    const perfect=this.board.every(row=>row.every(v=>!v));
+    if(perfect)this.perfectClears++;
+    const difficult=lines===4||(tspin.type!=='none'&&lines>0);
+    const b2bBefore=this.b2b;
+    if(lines>0){this.combo++;this.maxCombo=Math.max(this.maxCombo,this.combo)}
+    else this.combo=-1;
+    if(difficult)this.b2b=true;else if(lines>0)this.b2b=false;
+    if(lines===4)this.tetrisCount++;
+    if(tspin.type!=='none'){this.tspinCount++;if(lines===2)this.tspinDouble++}
+    this.score+=scoreFor(lines,tspin.type,b2bBefore,this.combo,this.level,perfect);
+    this.lines+=lines;
+    if(this.mode==='marathon')this.level=1+Math.floor(this.lines/10);
+    let atk=attackFor(lines,tspin.type,b2bBefore,this.combo,perfect);
+    if(atk>0){
+      const cancelled=Math.min(atk,this.pendingGarbage);this.pendingGarbage-=cancelled;atk-=cancelled;
+      if(atk>0){this.attacks+=atk;if(this.onAttack)this.onAttack(this,atk)}
+    }
+    this.showClearEvent(lines,tspin.type,b2bBefore,perfect);
+    if(lines>0)sfx.clear(lines);if(tspin.type!=='none')sfx.tspin();
+    if(this.mode==='sprint'&&this.lines>=40){
+      this.finished=true;if(this.onFinish)this.onFinish(this,'sprint');return;
+    }
+    if(this.pendingGarbage>0){
+      const add=Math.min(8,this.pendingGarbage);this.pendingGarbage-=add;this.applyGarbage(add);
+      if(this.gameOver)return;
+    }
+    this.active=null;this.spawn();
+  }
+  showClearEvent(lines,tspin,b2bBefore,perfect){
+    let main='';
+    if(perfect)main='PERFECT CLEAR';
+    else if(tspin==='full')main=`T-SPIN${lines?` ${['','SINGLE','DOUBLE','TRIPLE'][lines]}`:''}`;
+    else if(tspin==='mini')main=`T-SPIN MINI${lines===1?' SINGLE':''}`;
+    else if(lines===4)main='TETRIS';
+    else if(lines>0)main=['','SINGLE','DOUBLE','TRIPLE'][lines];
+    if(!main)return;
+    const subs=[];if(b2bBefore&&(lines===4||(tspin!=='none'&&lines>0)))subs.push('BACK-TO-BACK');
+    if(this.combo>0)subs.push(`COMBO ${this.combo}`);
+    this.eventText=main+(subs.length?'\n'+subs.join(' · '):'');
+    if(this.onEvent)this.onEvent(this,main,subs.join(' · '));
+  }
+  receiveGarbage(n){this.pendingGarbage+=n;this.received+=n}
+  applyGarbage(n){
+    let hole=this.garbageRng.int(COLS),applied=0;
+    for(let k=0;k<n;k++){
+      // Never mutate board length before checking garbage top-out.
+      const shifted=this.board[0];
+      if(shifted.some(Boolean)){this.topOut();return applied}
+      this.board.shift();
+      if(this.garbageRng.next()<.28)hole=this.garbageRng.int(COLS);
+      const row=Array(COLS).fill('G');row[hole]=null;this.board.push(row);
+      applied++;
+    }
+    if(this.active){
+      while(collides(this.board,this.active)){
+        this.active.y--;
+        if(this.active.y<-4){this.topOut();return applied}
+      }
+    }
+    return applied;
+  }
+  update(dt){
+    if(this.gameOver||this.finished||!this.active)return;
+    this.elapsed+=dt;
+    if(this.aiControlled)return;
+    this.gravityAcc+=dt;
+    const g=this.gravityMs();
+    while(this.gravityAcc>=g){this.gravityAcc-=g;if(!this.softDrop(true))break}
+    if(grounded(this.board,this.active)){
+      this.lockAcc+=dt;if(this.lockAcc>=APP.settings.lockDelay)this.lockPiece();
+    }else this.lockAcc=0;
+  }
+  pps(){return this.elapsed>0?this.pieces/(this.elapsed/1000):0}
+  apm(){return this.elapsed>0?this.attacks/(this.elapsed/60000):0}
+}
+
+/* =========================================================
+   AI evaluation + reachable placement search
+========================================================= */
+
+function boardFeatures(board){
+  const heights=Array(COLS).fill(0),holeCounts=Array(COLS).fill(0);
+  let holes=0,holeDepth=0,covered=0,holeColumns=0;
+  for(let x=0;x<COLS;x++){
+    let seen=false,top=ROWS,colHoles=0,filledAbove=0;
+    for(let y=0;y<ROWS;y++){
+      if(board[y][x]){
+        if(!seen){seen=true;top=y}
+        filledAbove++;
+      }else if(seen){
+        holes++;colHoles++;holeCounts[x]++;holeDepth+=ROWS-y;
+        covered+=filledAbove;
+      }
+    }
+    if(colHoles>0)holeColumns++;
+    heights[x]=seen?ROWS-top:0;
+  }
+  const aggregate=heights.reduce((a,b)=>a+b,0),maxHeight=Math.max(...heights),minHeight=Math.min(...heights);
+  let bump=0,wells=0,bestCleanWell=0,bestWellCol=-1;
+  for(let x=0;x<COLS-1;x++)bump+=Math.abs(heights[x]-heights[x+1]);
+  for(let x=0;x<COLS;x++){
+    const l=x===0?null:heights[x-1],r=x===COLS-1?null:heights[x+1];
+    const rim=l===null?r:r===null?l:Math.min(l,r);
+    const depth=Math.max(0,(rim??0)-heights[x]);
+    wells+=depth;
+    if(holeCounts[x]===0&&depth>bestCleanWell){bestCleanWell=depth;bestWellCol=x}
+  }
+  let rowTransitions=0,colTransitions=0;
+  for(let y=HIDDEN_ROWS;y<ROWS;y++){
+    let prev=1;
+    for(let x=0;x<COLS;x++){const cur=board[y][x]?1:0;if(cur!==prev)rowTransitions++;prev=cur}
+    if(prev===0)rowTransitions++;
+  }
+  for(let x=0;x<COLS;x++){
+    let prev=1;
+    for(let y=HIDDEN_ROWS;y<ROWS;y++){const cur=board[y][x]?1:0;if(cur!==prev)colTransitions++;prev=cur}
+    if(prev===0)colTransitions++;
+  }
+  return {
+    aggregate,maxHeight,minHeight,heights,holeCounts,holes,holeDepth,covered,holeColumns,
+    bump,wells,bestCleanWell,bestWellCol,rowTransitions,colTransitions
+  };
+}
+function countTSlots(board){
+  let n=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    const up=board[cy-1],mid=board[cy],down=board[cy+1];
+    for(let cx=1;cx<COLS-1;cx++){
+      if(mid[cx])continue;
+      const corners=(up[cx-1]?1:0)+(up[cx+1]?1:0)+(down[cx-1]?1:0)+(down[cx+1]?1:0);
+      if(corners>=3)n++;
+    }
+  }
+  return n;
+}
+
+function tSpinReadyGeometry(board){
+  let best=0,count=0;
+  for(let cy=HIDDEN_ROWS+1;cy<ROWS-1;cy++){
+    for(let cx=1;cx<COLS-1;cx++){
+      if(board[cy][cx])continue;
+      const tl=!!board[cy-1][cx-1],tr=!!board[cy-1][cx+1],
+            bl=!!board[cy+1][cx-1],br=!!board[cy+1][cx+1];
+      if((tl?1:0)+(tr?1:0)+(bl?1:0)+(br?1:0)<3)continue;
+      for(let rot=0;rot<4;rot++){
+        const p={type:'T',x:cx-1,y:cy-1,rot};
+        if(collides(board,p)||!grounded(board,p))continue;
+        const front=rot===0?(tl?1:0)+(tr?1:0):
+                    rot===1?(tr?1:0)+(br?1:0):
+                    rot===2?(bl?1:0)+(br?1:0):
+                            (tl?1:0)+(bl?1:0);
+        const pts=cellsOf(p);
+        let row1=pts[0][1],row2=null,row3=null;
+        for(let k=1;k<pts.length;k++){
+          const yy=pts[k][1];
+          if(yy!==row1&&row2===null)row2=yy;
+          else if(yy!==row1&&yy!==row2)row3=yy;
+        }
+        let lines=0;
+        for(const y of [row1,row2,row3]){
+          if(y===null||y<0||y>=ROWS)continue;
+          let full=true;
+          for(let x=0;x<COLS&&full;x++){
+            if(board[y][x])continue;
+            let byT=false;
+            for(let k=0;k<pts.length;k++)if(pts[k][0]===x&&pts[k][1]===y){byT=true;break}
+            if(!byT)full=false;
+          }
+          if(full)lines++;
+        }
+        if(lines<=0)continue;
+        count++;
+        const fullSpin=front===2;
+        const v=fullSpin?([0,1.25,4.2,6.8][Math.min(3,lines)]||0):.55;
+        if(v>best)best=v;
+      }
+    }
+  }
+  return {best,count};
+}
+function getTSpinReady(board,ctx={}){
+  const a=cachedBoardAnalysis(board,ctx);
+  if(a.tspinReady===undefined)a.tspinReady=tSpinReadyGeometry(board);
+  return a.tspinReady;
+}
+function tetrisReadyRows(board){
+  let best=0,bestCol=-1;
+  for(let x=0;x<COLS;x++){
+    let run=0,local=0;
+    for(let y=ROWS-1;y>=HIDDEN_ROWS;y--){
+      if(board[y][x]){run=0;continue}
+      let fullElse=true;
+      for(let cx=0;cx<COLS;cx++)if(cx!==x&&!board[y][cx]){fullElse=false;break}
+      if(fullElse){run++;if(run>local)local=run}else run=0;
+    }
+    if(local>best){best=local;bestCol=x}
+  }
+  return {rows:Math.min(4,best),col:bestCol};
+}
+function cachedBoardAnalysis(board,ctx={}){
+  const cache=ctx.analysisCache;
+  if(cache){
+    let v=cache.get(board);
+    if(v)return v;
+    v={features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+    cache.set(board,v);return v;
+  }
+  return {features:boardFeatures(board),slots:countTSlots(board),tetrisReady:tetrisReadyRows(board)};
+}
+
+/*
+  AI v5 strategic overhaul
+  Style now MODIFIES a common competent baseline instead of replacing safety.
+  This is deliberate: "Aggressive" means attack harder, not forget how holes work.
+*/
+const AI_BASE={
+  height:-0.30,maxHeight:-0.68,holes:-8.0,holeDepth:-0.085,covered:-0.06,
+  bump:-0.25,wells:-0.035,rowTransitions:-0.105,colTransitions:-0.09,
+  lines:1.35,attack:3.55
+};
+const AI_STYLE={
+  balanced:{survival:1.00,attack:1.00,lines:1.00,tspin:1.00,setup:1.00,aggression:0.00},
+  aggressive:{survival:.98,attack:1.48,lines:.92,tspin:1.15,setup:1.02,aggression:1.00},
+  defensive:{survival:1.12,attack:.90,lines:1.08,tspin:.86,setup:.82,aggression:-.25},
+  tspin:{survival:1.04,attack:1.08,lines:.98,tspin:1.78,setup:1.42,aggression:.24}
+};
+
+/*
+  Level controls search quality and strategic knowledge.
+  Low levels still make mistakes; high levels gain lookahead/garbage/HOLD/tactical awareness.
+*/
+const AI_LEVEL_PROFILE={
+  1:{label:'BEGINNER',level:1,holdChance:0,depth:0,shortlist:5,beam:1,futureWeight:0,
+     attackFactor:.35,tspinFactor:0,setupFactor:0,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:0,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.78,
+     mistakeWeights:[.48,.29,.16,.07],mistakeWindow:12},
+  2:{label:'BASIC',level:2,holdChance:.55,depth:0,shortlist:6,beam:2,futureWeight:0,
+     attackFactor:.55,tspinFactor:.12,setupFactor:.06,b2bAware:false,comboAware:false,
+     garbageAware:0,opponentAware:0,tspinPlanning:.05,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.86,
+     mistakeWeights:[.72,.20,.08],mistakeWindow:8},
+  3:{label:'FOUNDATION',level:3,holdChance:1,depth:1,shortlist:7,beam:3,futureWeight:.44,
+     attackFactor:.76,tspinFactor:.38,setupFactor:.22,b2bAware:false,comboAware:false,
+     garbageAware:.05,opponentAware:0,tspinPlanning:.18,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:false,
+     b2bBreakPenalty:0,b2bKeepBonus:0,survival:.98,
+     mistakeWeights:[.95,.05],mistakeWindow:4.0},
+  4:{label:'LOOKAHEAD',level:4,holdChance:1,depth:1,shortlist:8,beam:4,futureWeight:.58,
+     attackFactor:.96,tspinFactor:.68,setupFactor:.42,b2bAware:true,comboAware:true,
+     garbageAware:.18,opponentAware:0,tspinPlanning:.35,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:1.8,b2bKeepBonus:.8,survival:1.00,
+     mistakeWeights:[.985,.015],mistakeWindow:2.2},
+  5:{label:'CHAIN BUILDER',level:5,holdChance:1,depth:2,shortlist:9,beam:4,futureWeight:.62,
+     attackFactor:1.00,tspinFactor:.82,setupFactor:.52,b2bAware:true,comboAware:true,
+     garbageAware:.45,opponentAware:.05,tspinPlanning:.58,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.4,b2bKeepBonus:1.2,survival:1.06,
+     mistakeWeights:null,mistakeWindow:0},
+  6:{label:'GARBAGE / HOLD',level:6,holdChance:1,depth:2,shortlist:10,beam:4,futureWeight:.67,
+     attackFactor:1.05,tspinFactor:.95,setupFactor:.68,b2bAware:true,comboAware:true,
+     garbageAware:1.0,opponentAware:.15,tspinPlanning:.78,tacticalT:false,tacticalReadiness:false,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:2.8,b2bKeepBonus:1.5,survival:1.12,
+     mistakeWeights:null,mistakeWindow:0},
+  7:{label:'TACTICAL',level:7,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.71,
+     attackFactor:1.08,tspinFactor:1.08,setupFactor:.88,b2bAware:true,comboAware:true,
+     garbageAware:1.10,opponentAware:.28,tspinPlanning:1.05,tacticalT:true,tacticalReadiness:true,futureHold:false,categoryBeam:true,
+     b2bBreakPenalty:3.2,b2bKeepBonus:1.9,survival:1.16,
+     mistakeWeights:null,mistakeWindow:0},
+  8:{label:'VS TACTICS',level:8,holdChance:1,depth:2,shortlist:11,beam:4,futureWeight:.72,
+     attackFactor:1.12,tspinFactor:1.16,setupFactor:1.00,b2bAware:true,comboAware:true,
+     garbageAware:1.25,opponentAware:1.0,tspinPlanning:1.22,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:3.6,b2bKeepBonus:2.2,survival:1.20,
+     mistakeWeights:null,mistakeWindow:0},
+  9:{label:'EXPERT',level:9,holdChance:1,depth:3,shortlist:10,beam:2,futureWeight:.74,
+     attackFactor:1.16,tspinFactor:1.24,setupFactor:1.12,b2bAware:true,comboAware:true,
+     garbageAware:1.38,opponentAware:1.45,tspinPlanning:1.38,tacticalT:true,tacticalReadiness:true,futureHold:true,categoryBeam:true,
+     b2bBreakPenalty:4.0,b2bKeepBonus:2.5,survival:1.24,
+     mistakeWeights:null,mistakeWindow:0}
+};
+function getAIProfile(level){return AI_LEVEL_PROFILE[clamp(Math.round(+level||1),1,9)]}
+
+function simulateLock(board,p,lastWasRotate=false,lastKickIndex=0){
+  const b=deepBoard(board),t=detectTSpin(b,p,lastWasRotate,lastKickIndex);
+  for(const [x,y] of cellsOf(p)){if(y>=0&&y<ROWS&&x>=0&&x<COLS)b[y][x]=p.type}
+  const lines=clearCompletedLines(b);
+  return {board:b,lines,tspin:t.type,perfect:b.every(r=>r.every(v=>!v))};
+}
+function boardSignature(board){
+  let s='';
+  for(let y=0;y<ROWS;y++){
+    let mask=0;
+    for(let x=0;x<COLS;x++)if(board[y][x])mask|=(1<<x);
+    s+=mask.toString(36)+'.';
+  }
+  return s;
+}
+function chainAfter(ctx,result){
+  const difficult=result.lines===4||(result.tspin!=='none'&&result.lines>0);
+  const comboAfter=result.lines>0?(ctx.combo??-1)+1:-1;
+  let b2bAfter=!!ctx.b2b;
+  if(difficult)b2bAfter=true;
+  else if(result.lines>0)b2bAfter=false;
+  return {b2b:b2bAfter,combo:comboAfter,difficult};
+}
+function boardDanger(features){
+  const height=clamp((features.maxHeight-9)/11,0,1);
+  const holes=clamp(features.holes/10,0,1);
+  const rough=clamp(features.bump/32,0,1);
+  return clamp(height*.62+holes*.30+rough*.08,0,1);
+}
+function tSpinResultValue(result){
+  if(result.tspin==='none')return 0;
+  if(result.lines===0)return 0; // 0-line MINI is not an achievement.
+  if(result.tspin==='mini')return result.lines===1?.55:.25;
+  return [0,1.25,3.25,5.7][Math.min(3,result.lines)]||0;
+}
+function stableTopN(arr,n,fn,desc=false){
+  if(n<=0||!arr.length)return [];
+  const top=[];
+  for(const item of arr){
+    const v=fn(item);let pos=0;
+    while(pos<top.length){
+      const tv=fn(top[pos]);
+      if(desc?(v>tv):(v<tv))break;
+      pos++;
+    }
+    if(pos<n){top.splice(pos,0,item);if(top.length>n)top.pop()}
+  }
+  return top;
+}
+function strategicShortlist(scored,limit,profile){
+  if(!profile.categoryBeam)return scored.slice(0,limit);
+  const out=[],seen=new Set();
+  const add=c=>{if(!c||seen.has(c))return;seen.add(c);out.push(c)};
+  const take=(arr,n=1)=>{for(let i=0;i<Math.min(n,arr.length)&&out.length<limit;i++)add(arr[i])};
+  take(scored,Math.max(3,Math.ceil(limit*.50)));
+  take(stableTopN(scored,1,c=>c.analysis.features.holes),1);
+  take(stableTopN(scored,1,c=>c.analysis.features.maxHeight),1);
+  take(stableTopN(scored,2,c=>c.analysis.attack,true),2);
+  take(stableTopN(scored,1,c=>c.analysis.tetrisReady,true),1);
+  take(stableTopN(scored,2,c=>c.analysis.setupScore,true),2);
+  take(stableTopN(scored,1,c=>c.result.lines,true),1);
+  for(const c of scored){if(out.length>=limit)break;add(c)}
+  return out;
+}
+
+const ML_FEATURE_COUNT=44;
+const OVERLAY_FEATURE_COUNT=24;
+function mlFeaturesForEval({bf,f,result,actualAttack,newHoles,filledHoles,heightRise,heightDrop,tr,tspinReady,chain,incoming,selfDanger,oppDanger}){
+  const ts=result.tspin==='full'?1:(result.tspin==='mini'?.45:0);
+  const core=[
+    1,
+    f.maxHeight/24,
+    Math.min(1,f.holes/20),
+    Math.min(1,f.holeDepth/60),
+    Math.min(1,f.aggregate/120),
+    Math.min(1,f.bump/50),
+    Math.min(1,f.wells/40),
+    Math.min(1,f.rowTransitions/80),
+    Math.min(1,f.colTransitions/80),
+    Math.min(1,(f.bestCleanWell||0)/8),
+    result.lines/4,
+    Math.min(1,actualAttack/12),
+    ts,
+    result.perfect?1:0,
+    Math.min(1,newHoles/6),
+    Math.min(1,filledHoles/6),
+    Math.min(1,heightRise/8),
+    Math.min(1,heightDrop/8),
+    Math.min(1,tr/4),
+    Math.min(1,tspinReady/4),
+    chain.b2b?1:0,
+    Math.min(1,Math.max(0,chain.combo)/8),
+    Math.min(1,incoming/12),
+    Math.max(-1,Math.min(1,oppDanger-selfDanger))
+  ];
+  // V2: retain the 24 legacy features first so old models/overlay stay compatible,
+  // then add column-wise geometry for the NN only.
+  const colHeights=(f.heights||Array(10).fill(0)).map(v=>Math.max(0,Math.min(1,v/24)));
+  const colHoles=(f.holeCounts||Array(10).fill(0)).map(v=>Math.max(0,Math.min(1,v/8)));
+  return core.concat(colHeights,colHoles);
+}
+function mlPredict(model,x){
+  if(!model||!Array.isArray(model.w1)||!Array.isArray(model.w2))return 0;
+  const h=model.hidden|0,inp=model.input|0;
+  if(inp<=0||inp>x.length||h<=0)return 0;
+  const z=new Array(h);
+  for(let j=0;j<h;j++){
+    let s=(model.b1&&model.b1[j])||0,off=j*inp;
+    for(let i=0;i<inp;i++)s+=model.w1[off+i]*x[i];
+    z[j]=Math.tanh(s);
+  }
+  let y=(model.b2&&model.b2[0])||0;
+  for(let j=0;j<h;j++)y+=model.w2[j]*z[j];
+  return Math.tanh(y);
+}
+function linearOverlayScore(w,x){
+  if(!Array.isArray(w)||!w.length)return 0;
+  let s=0,n=Math.min(w.length,x.length);
+  for(let i=0;i<n;i++)s+=(+w[i]||0)*x[i];
+  return s;
+}
+
+function aiEvaluate(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  const style=AI_STYLE[styleName]||AI_STYLE.balanced;
+  const beforeA=cachedBoardAnalysis(board,ctx),afterA=cachedBoardAnalysis(result.board,ctx);
+  const bf=beforeA.features,f=afterA.features;
+  const chain=chainAfter(ctx,result);
+  const actualAttack=attackFor(result.lines,result.tspin,!!ctx.b2b,chain.combo,result.perfect);
+  const perceivedAttack=attackFor(
+    result.lines,result.tspin,
+    profile.b2bAware?!!ctx.b2b:false,
+    profile.comboAware?chain.combo:0,
+    result.perfect
+  );
+  const incoming=Math.max(0,ctx.pendingGarbage||0);
+  const beforeDanger=boardDanger(bf),selfDanger=boardDanger(f);
+  const panic=(bf.maxHeight>=15||bf.holes>=7||incoming>=5);
+  const critical=(bf.maxHeight>=18||bf.holes>=11||incoming>=9);
+  const survivalScale=profile.survival*style.survival*(1+(panic?.55:0)+(critical?.70:0));
+  const newHoles=Math.max(0,f.holes-bf.holes),filledHoles=Math.max(0,bf.holes-f.holes);
+  const heightRise=Math.max(0,f.maxHeight-bf.maxHeight);
+  const heightDrop=Math.max(0,bf.maxHeight-f.maxHeight);
+
+  // Static board quality: counted strongly at root/leaf, not repeatedly at every future ply.
+  let staticScore=
+    f.aggregate*AI_BASE.height*survivalScale+
+    f.maxHeight*AI_BASE.maxHeight*survivalScale+
+    f.holes*AI_BASE.holes*survivalScale+
+    f.holeDepth*AI_BASE.holeDepth*survivalScale+
+    f.covered*AI_BASE.covered*survivalScale+
+    f.bump*AI_BASE.bump+f.wells*AI_BASE.wells+
+    f.rowTransitions*AI_BASE.rowTransitions+f.colTransitions*AI_BASE.colTransitions;
+
+  if(f.maxHeight>12)staticScore-=Math.pow(f.maxHeight-12,2)*.52*profile.survival*style.survival;
+  if(f.maxHeight>=17)staticScore-=Math.pow(f.maxHeight-16,2)*1.65*profile.survival*style.survival;
+  if(f.maxHeight>=20)staticScore-=18*profile.survival*style.survival;
+  if(f.holes>=8)staticScore-=Math.pow(f.holes-7,1.35)*1.15*profile.survival*style.survival;
+
+  let transitionScore=0;
+
+  // Damage / repair of the current move.
+  transitionScore-=newHoles*(4.9+1.9*profile.survival)*style.survival;
+  transitionScore+=filledHoles*(2.35+.75*profile.garbageAware);
+  transitionScore-=heightRise*(panic?2.6:.52)*style.survival;
+  transitionScore+=heightDrop*(panic?1.35:.28);
+
+  // Ordinary clears are useful under pressure. At low danger, zero-attack singles are "burns".
+  const clearScale=style.lines*(1+beforeDanger*1.05);
+  transitionScore+=result.lines*AI_BASE.lines*clearScale;
+  const skill=clamp((profile.level-2)/7,0,1);
+  if(result.lines===1&&actualAttack===0&&incoming===0&&filledHoles===0&&beforeDanger<.48){
+    transitionScore-=(.35+2.35*skill)*(styleName==='defensive'?.82:1);
+  }else if(result.lines===2&&actualAttack<=1&&incoming===0&&beforeDanger<.35){
+    transitionScore-=.25*skill;
+}
+  if(result.lines===0&&bf.maxHeight>=12){
+    transitionScore-=(bf.maxHeight-11)*(.48+(panic?.60:0))*style.survival;
+  }
+
+  // Attack. Aggressive gets extra payoff only while healthy.
+  let attackScale=AI_BASE.attack*profile.attackFactor*style.attack;
+  if(style.aggression>0&&selfDanger<.58)attackScale*=1+style.aggression*.18;
+  if(selfDanger>.72)attackScale*=.70;
+  transitionScore+=perceivedAttack*attackScale;
+  if(actualAttack>=3&&selfDanger<.58){
+    transitionScore+=Math.pow(actualAttack-2,1.25)*.85*profile.attackFactor*style.attack;
+  }
+
+  // T-Spin: line-aware. A 0-line MINI receives no tactical reward.
+  const tsValue=tSpinResultValue(result);
+  transitionScore+=tsValue*4.6*profile.tspinFactor*style.tspin;
+
+  // Strategic setup is valuable only while the board is safe.
+  const queue=ctx.queue||[];
+  const tIndex=queue.indexOf('T'),iIndex=queue.indexOf('I');
+  const tNear=ctx.hold==='T'?1:(tIndex<0?.10:[1,.80,.57,.36,.22][Math.min(tIndex,4)]);
+  const iNear=ctx.hold==='I'?1:(iIndex<0?.12:[1,.84,.63,.43,.27][Math.min(iIndex,4)]);
+  const tAvailableSoon=ctx.hold==='T'||(tIndex>=0&&tIndex<=2);
+  const setupHeightGate=clamp((15-bf.maxHeight)/7,0,1);
+  const setupHoleGate=clamp((6-bf.holes)/6,0,1);
+  const setupSafety=(critical?0:panic?.06:clamp(1-selfDanger*.78,.20,1))*setupHeightGate*setupHoleGate;
+  const slotDelta=afterA.slots-beforeA.slots;
+  const tr=afterA.tetrisReady.rows;
+  const wellBefore=Math.min(4,bf.bestCleanWell||0),wellAfter=Math.min(4,f.bestCleanWell||0);
+  let setupScore=0;
+
+  // A clean common well is intentional structure, not generic roughness.
+  setupScore+=Math.max(0,wellAfter-wellBefore)*.90*iNear;
+  setupScore+=wellAfter*.30*iNear;
+  if(tr>0)setupScore+=tr*.90*iNear;
+  if(tr>=4)setupScore+=3.2*iNear;
+
+  // T slot preservation is modest unless a T is close.
+  let tspinReady=0;
+  if(profile.tacticalReadiness){
+    // A raw three-corner "slot" is only a weak hint. Real reward requires a line-clearing T-spin geometry.
+    setupScore+=Math.max(0,slotDelta)*.08*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.05;
+    if(setupSafety>.12&&tAvailableSoon&&(afterA.slots>0||beforeA.slots>0)){
+      const beforeReady=beforeA.slots>0?getTSpinReady(board,ctx).best:0;
+      const afterReady=afterA.slots>0?getTSpinReady(result.board,ctx).best:0;
+      tspinReady=afterReady;
+      setupScore+=(afterReady-beforeReady)*1.75+afterReady*.38;
+    }
+  }else{
+    setupScore+=Math.max(0,slotDelta)*.38*tNear;
+    setupScore-=Math.max(0,-slotDelta)*.10;
+  }
+
+  // Don't burn a developed well for a harmless low-stack single.
+  if(result.lines===1&&actualAttack===0&&beforeDanger<.42&&wellBefore>=2&&wellAfter<wellBefore){
+    transitionScore-=(wellBefore-wellAfter)*1.15*skill;
+  }
+
+  transitionScore+=setupScore*profile.setupFactor*style.setup*setupSafety*profile.tspinPlanning;
+  if(styleName==='tspin'&&result.lines===0&&bf.maxHeight>=9&&tspinReady<=0&&tr<3){
+    transitionScore-=(bf.maxHeight-8)*.75;
+  }
+
+  // B2B / combo.
+  if(profile.b2bAware){
+    if(ctx.b2b&&result.lines>0&&!chain.difficult&&!panic)transitionScore-=profile.b2bBreakPenalty;
+    if(ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*(1+selfDanger*.25);
+    if(!ctx.b2b&&chain.difficult)transitionScore+=profile.b2bKeepBonus*.35;
+  }
+  if(profile.comboAware){
+    if(ctx.combo>=1&&result.lines===0&&!panic)transitionScore-=Math.min(2.4,ctx.combo*.28);
+    if(chain.combo>=2&&result.lines>0)transitionScore+=Math.min(3.0,chain.combo*.27);
+  }
+
+  // Garbage handling.
+  if(profile.garbageAware>0&&incoming>0){
+    const cancelled=Math.min(incoming,actualAttack),remain=incoming-cancelled;
+    transitionScore+=cancelled*3.35*profile.garbageAware;
+    transitionScore-=remain*.32*profile.garbageAware;
+    if(remain>0&&f.maxHeight>10)transitionScore-=(f.maxHeight-10)*remain*.16*profile.garbageAware;
+    if(filledHoles>0)transitionScore+=filledHoles*.95*profile.garbageAware;
+  }
+
+  // Opponent pressure: finish only when self-board is healthy.
+  let oppDanger=0;
+  if(profile.opponentAware>0&&ctx.opponentFeatures){
+    oppDanger=boardDanger(ctx.opponentFeatures);
+    const oppPending=Math.max(0,ctx.opponentPending||0);
+    if(selfDanger<.65){
+      transitionScore+=actualAttack*oppDanger*3.35*profile.opponentAware;
+      transitionScore+=actualAttack*Math.min(12,oppPending)*.085*profile.opponentAware;
+      if(oppDanger>.72)transitionScore+=actualAttack*actualAttack*.32*profile.opponentAware;
+    }
+  }
+
+  const mlFeatures=mlFeaturesForEval({
+    bf,f,result,actualAttack,newHoles,filledHoles,heightRise,heightDrop,tr,tspinReady,
+    chain,incoming,selfDanger,oppDanger
+  });
+  const overlayScore=linearOverlayScore(ctx.overlay,mlFeatures)*(ctx.overlayScale==null?2.0:+ctx.overlayScale);
+  const learnedValue=mlPredict(ctx.mlModel,mlFeatures);
+  const learnedScore=learnedValue*(ctx.mlScale==null?6.0:+ctx.mlScale);
+  const score=staticScore+transitionScore+overlayScore+learnedScore;
+  return {
+    score,staticScore,transitionScore,attack:actualAttack,perceivedAttack,features:f,
+    slots:afterA.slots,slotDelta,tetrisReady:tr,tspinReady,setupScore,
+    selfDanger,oppDanger,b2bAfter:chain.b2b,comboAfter:chain.combo,difficult:chain.difficult,
+    mlFeatures,overlayScore,learnedValue,learnedScore
+  };
+}
+function aiScore(board,result,styleName,ctx={},profile=getAIProfile(5)){
+  return aiEvaluate(board,result,styleName,ctx,profile).score;
+}
+
+function reachKey(p,lastRotate,kickIndex=0){
+  return `${p.x},${p.y},${p.rot},${lastRotate?1:0},${lastRotate?kickIndex:0}`;
+}
+function createReachabilitySearch(board,start){
+  const first={p:{...start},parent:-1,action:null,depth:0,lastRotate:false,kickIndex:0};
+  return {
+    board,q:[first],head:0,seen:new Set([reachKey(first.p,false,0)]),out:[],done:false
+  };
+}
+function stepReachabilitySearch(search,deadline=Infinity){
+  const {board,q,seen,out}=search;
+  const pushState=(piece,parent,action,depth,lastRotate,kickIndex=0)=>{
+    if(depth>60||!piece||collides(board,piece))return;
+    const k=reachKey(piece,lastRotate,kickIndex);
+    if(seen.has(k))return;
+    seen.add(k);
+    q.push({p:piece,parent,action,depth,lastRotate,kickIndex:lastRotate?(kickIndex||0):0});
+  };
+  while(search.head<q.length&&performance.now()<deadline){
+    const curIdx=search.head++,cur=q[curIdx];
+    if(grounded(board,cur.p))out.push(curIdx);
+    const d=cur.depth+1;
+    pushState({...cur.p,x:cur.p.x-1},curIdx,'left',d,false,0);
+    pushState({...cur.p,x:cur.p.x+1},curIdx,'right',d,false,0);
+    pushState({...cur.p,y:cur.p.y+1},curIdx,'down',d,false,0);
+    const cw=tryRotateOn(board,cur.p,1);if(cw)pushState(cw.piece,curIdx,'cw',d,true,cw.kickIndex||0);
+    const ccw=tryRotateOn(board,cur.p,-1);if(ccw)pushState(ccw.piece,curIdx,'ccw',d,true,ccw.kickIndex||0);
+  }
+  if(search.head>=q.length)search.done=true;
+  return search.done;
+}
+function reconstructReachPath(q,idx){
+  const path=[];
+  while(idx>=0){
+    const n=q[idx];
+    if(n.action)path.push(n.action);
+    idx=n.parent;
+  }
+  path.reverse();
+  return path;
+}
+function finishReachabilitySearch(search){
+  const unique=new Map(),q=search.q;
+  for(const idx of search.out){
+    const c=q[idx];
+    const k=`${c.p.x},${c.p.y},${c.p.rot},${c.lastRotate?1:0}`;
+    const prev=unique.get(k);
+    if(!prev||c.depth<prev.depth){
+      unique.set(k,{
+        p:c.p,path:reconstructReachPath(q,idx),
+        lastRotate:c.lastRotate,kickIndex:c.kickIndex||0
+      });
+    }
+  }
+  return [...unique.values()];
+}
+function reachablePlacements(board,start){
+  const search=createReachabilitySearch(board,start);
+  while(!search.done)stepReachabilitySearch(search,Infinity);
+  return finishReachabilitySearch(search);
+}
+
+function fastDropPlacements(board,type){
+  const out=[],seen=new Set();
+  for(let r=0;r<4;r++)for(let x=-2;x<COLS+2;x++){
+    let p={type,x,y:0,rot:r};if(collides(board,p))continue;p=dropY(board,p);
+    if(collides(board,p))continue;
+    const sig=cellsOf(p).map(([cx,cy])=>`${cx},${cy}`).sort().join('|');
+    if(seen.has(sig))continue;seen.add(sig);
+    out.push({p,path:[],lastRotate:false,kickIndex:0});
+  }
+  return out;
+}
+
+function tacticalTPlacements(board){
+  /*
+    Cheap future-T tactical search.
+    Full reachablePlacements() is used for the CURRENT piece. For a future T,
+    this explores hard-drop approaches plus a final SRS rotation from 0-2 cells
+    above the resting point. It catches the common T-Spin tuck/kick patterns
+    without running another full BFS inside every beam-search branch.
+  */
+  const out=[],seen=new Set();
+  const add=(p,lastRotate=false,kickIndex=0)=>{
+    if(!p||collides(board,p)||!grounded(board,p))return;
+    const sig=cellsOf(p).map(([x,y])=>`${x},${y}`).sort().join('|')+`/${lastRotate?1:0}/${lastRotate?kickIndex:0}`;
+    if(seen.has(sig))return;seen.add(sig);
+    out.push({p,path:[],lastRotate,kickIndex});
+  };
+  for(let rot=0;rot<4;rot++)for(let x=-2;x<COLS+2;x++){
+    let base={type:'T',x,y:0,rot};
+    if(collides(board,base))continue;
+    base=dropY(board,base);
+    add(base,false,0);
+    for(let lift=0;lift<=2;lift++){
+      const pre={...base,y:base.y-lift};
+      if(collides(board,pre))continue;
+      for(const dir of [-1,1]){
+        const r=tryRotateOn(board,pre,dir);
+        if(r)add(r.piece,true,r.kickIndex||0);
+      }
+    }
+  }
+  return out;
+}
+class TetrisAI{
+  constructor(game,{level=5,pps=1.35,style='balanced',seed=1,mlModel=null,mlScale=1,overlay=null,overlayScale=2}={}){
+    this.game=game;this.game.aiControlled=true;
+    this.level=clamp(Math.round(+level||5),1,9);this.profile=getAIProfile(this.level);
+    this.pps=clamp(+pps||1.35,.2,6);this.style=style;
+    this.mlModel=mlModel;this.mlScale=+mlScale||0;this.overlay=overlay;this.overlayScale=+overlayScale||0;
+    this.rng=new PRNG((seed^0xA531)>>>0);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.pieceClock=0;this.placeAt=0;this.actionDelay=20;this.lastPieceCount=-1;
+
+    this.planning=false;this.planningPhase='idle';this.planDepth=0;this.planSerial=0;
+    this.scenarios=[];this.scenarioIndex=0;this.rootSearch=null;
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];this.shortlistAccum=[];
+    this.planWork=[];this.planWorkIndex=0;this.futureCache=new Map();this.analysisCache=new WeakMap();
+  }
+  onSpawn(){
+    this.pieceClock=0;
+    // Intelligence and placement speed are intentionally independent.
+    this.placeAt=(1000/this.pps)*this.rng.range(.88,1.12);
+    this.plan=null;this.actionIndex=0;this.actionAcc=0;this.lastPieceCount=this.game.pieces;
+    this.beginPlan();
+  }
+  context(queue=this.game.queue){
+    const g=this.game,o=g.opponent&&!g.opponent.gameOver?g.opponent:null;
+    return {
+      b2b:g.b2b,combo:g.combo,pendingGarbage:g.pendingGarbage,queue:queue.slice(),hold:g.hold,
+      opponentFeatures:o?boardFeatures(o.board):null,opponentPending:o?o.pendingGarbage:0,
+      analysisCache:this.analysisCache,mlModel:this.mlModel,mlScale:this.mlScale,
+      overlay:this.overlay,overlayScale:this.overlayScale
+    };
+  }
+  candidateSetFor(type,board=this.game.board,start=null,ctx=this.context()){
+    // Synchronous helper retained for tests/debug. Normal gameplay uses the incremental root search.
+    const s=start||{type,x:3,y:1,rot:0};
+    const arr=reachablePlacements(board,s);
+    return arr.map(c=>{
+      const result=simulateLock(board,c.p,c.lastRotate,c.kickIndex);
+      const analysis=aiEvaluate(board,result,this.style,ctx,this.profile);
+      return {...c,result,analysis,score:analysis.score};
+    });
+  }
+
+  nextContext(ctx,result,nextQueue,holdOverride=ctx.hold){
+    const chain=chainAfter(ctx,result);
+    return {...ctx,b2b:chain.b2b,combo:chain.combo,hold:holdOverride,pendingGarbage:0,queue:nextQueue.slice()};
+  }
+  futurePlacements(board,type,depth){
+    // High levels must keep SRS/T-spin legality even when T is 2-3 plies away.
+    if(this.profile.tacticalT&&type==='T')return tacticalTPlacements(board);
+    return fastDropPlacements(board,type);
+  }
+  futureActions(queue,ctx){
+    if(!queue.length)return [];
+    const cur=queue[0],out=[{type:cur,nextQueue:queue.slice(1),holdAfter:ctx.hold,usedHold:false}];
+    if(!this.profile.futureHold)return out;
+    const strategic=t=>t==='I'||t==='T';
+    if(ctx.hold){
+      if(strategic(ctx.hold)||strategic(cur)){
+        out.push({type:ctx.hold,nextQueue:queue.slice(1),holdAfter:cur,usedHold:true});
+      }
+    }else if(queue.length>=2&&(strategic(cur)||strategic(queue[1]))){
+      out.push({type:queue[1],nextQueue:queue.slice(2),holdAfter:cur,usedHold:true});
+    }
+    return out;
+  }
+  futureValue(board,queue,depth,ctx){
+    if(depth<=0||queue.length===0)return 0;
+    const cacheKey=`${depth}|${queue.slice(0,depth+1).join('')}|H:${ctx.hold||'-'}|${ctx.b2b?1:0}|${ctx.combo}|${boardSignature(board)}`;
+    const cached=this.futureCache.get(cacheKey);if(cached!==undefined)return cached;
+    let scored=[];
+    for(const action of this.futureActions(queue,ctx)){
+      const cand=this.futurePlacements(board,action.type,depth);
+      for(const c of cand){
+        const result=simulateLock(board,c.p,!!c.lastRotate,c.kickIndex||0);
+        const localCtx={...ctx,hold:action.holdAfter,queue:action.nextQueue.slice()};
+        const analysis=aiEvaluate(board,result,this.style,localCtx,this.profile);
+        scored.push({
+          result,analysis,score:analysis.score-(action.usedHold?.02:0),
+          nextQueue:action.nextQueue,holdAfter:action.holdAfter
+        });
+      }
+    }
+    if(!scored.length){this.futureCache.set(cacheKey,-999);return -999}
+    scored=stableTopN(scored,this.profile.beam,c=>c.score,true);
+    let best=-Infinity;
+    for(const c of scored){
+      let v=c.analysis.transitionScore+(depth<=1?c.analysis.staticScore:0);
+      if(depth>1){
+        const nctx=this.nextContext(ctx,c.result,c.nextQueue,c.holdAfter);
+        v+=this.profile.futureWeight*this.futureValue(c.result.board,c.nextQueue,depth-1,nctx);
+      }
+      if(v>best)best=v;
+    }
+    this.futureCache.set(cacheKey,best);return best;
+  }
+  shouldConsiderHold(){
+    if(this.game.holdUsed||this.profile.holdChance<=0)return false;
+    if(this.profile.holdChance>=1)return true;
+    return this.rng.next()<this.profile.holdChance;
+  }
+  buildScenarios(){
+    const g=this.game,normalQueue=g.queue.slice();
+    const scenarios=[{hold:false,type:g.active.type,start:{...g.active},futureQueue:normalQueue,ctx:this.context(normalQueue)}];
+    if(this.shouldConsiderHold()){
+      const alt=g.hold!==null?g.hold:g.queue[0];
+      const futureQueue=g.hold===null?g.queue.slice(1):g.queue.slice();
+      scenarios.push({
+        hold:true,type:alt,start:{type:alt,x:3,y:1,rot:0},futureQueue,
+        ctx:{...this.context(futureQueue),hold:g.active.type}
+      });
+    }
+    return scenarios;
+  }
+  startScenarioSearch(){
+    if(this.scenarioIndex>=this.scenarios.length){
+      this.finishRootGeneration();return;
+    }
+    const sc=this.scenarios[this.scenarioIndex];
+    this.rootSearch=createReachabilitySearch(this.game.board,sc.start);
+    this.rootPlacements=[];this.rootScoreIndex=0;this.rootScored=[];
+    this.planningPhase='root-search';
+  }
+  finishRootGeneration(){
+    this.planWork=this.shortlistAccum.sort((a,b)=>b.baseScore-a.baseScore);
+    this.planWorkIndex=0;this.planDepth=this.profile.depth;
+    if(!this.planWork.length){this.finishPlan();return}
+    if(this.planDepth===0){
+      for(const c of this.planWork)c.score=c.baseScore-(c.hold?.05:0);
+      this.planWorkIndex=this.planWork.length;this.finishPlan();return;
+    }
+    this.planningPhase='future';
+  }
+  beginPlan(){
+    const g=this.game;if(!g.active){this.planning=false;this.planningPhase='idle';return}
+    this.planSerial++;this.futureCache.clear();this.analysisCache=new WeakMap();
+    this.scenarios=this.buildScenarios();this.scenarioIndex=0;
+    this.shortlistAccum=[];this.planWork=[];this.planWorkIndex=0;
+    this.planning=true;this.startScenarioSearch();
+  }
+  processPlanning(budgetMs=1.8){
+    if(!this.planning)return;
+    const deadline=performance.now()+Math.max(.25,budgetMs);
+
+    while(this.planning&&performance.now()<deadline){
+      if(this.planningPhase==='root-search'){
+        stepReachabilitySearch(this.rootSearch,deadline);
+        if(!this.rootSearch.done)return;
+        this.rootPlacements=finishReachabilitySearch(this.rootSearch);
+        this.rootScoreIndex=0;this.rootScored=[];
+        this.planningPhase='root-score';
+        continue;
+      }
+
+      if(this.planningPhase==='root-score'){
+        const sc=this.scenarios[this.scenarioIndex];
+        while(this.rootScoreIndex<this.rootPlacements.length&&performance.now()<deadline){
+          const c=this.rootPlacements[this.rootScoreIndex++];
+          const result=simulateLock(this.game.board,c.p,c.lastRotate,c.kickIndex);
+          const analysis=aiEvaluate(this.game.board,result,this.style,sc.ctx,this.profile);
+          this.rootScored.push({...c,result,analysis,score:analysis.score});
+        }
+        if(this.rootScoreIndex<this.rootPlacements.length)return;
+
+        this.rootScored.sort((a,b)=>b.score-a.score);
+        for(const c of strategicShortlist(this.rootScored,this.profile.shortlist,this.profile)){
+          this.shortlistAccum.push({
+            ...c,hold:sc.hold,type:sc.type,futureQueue:sc.futureQueue,
+            baseScore:c.score,score:c.score,ctx:sc.ctx
+          });
+        }
+        this.scenarioIndex++;
+        if(this.scenarioIndex<this.scenarios.length){
+          this.startScenarioSearch();continue;
+        }
+        this.finishRootGeneration();
+        continue;
+      }
+
+      if(this.planningPhase==='future'){
+        if(this.planWorkIndex>=this.planWork.length){this.finishPlan();return}
+        const c=this.planWork[this.planWorkIndex++];
+        const rootStaticWeight=this.profile.level<=3?.78:this.profile.level<=4?.66:this.profile.level<=6?.52:.40;
+        let score=c.analysis.transitionScore+c.analysis.staticScore*rootStaticWeight;
+        const nctx=this.nextContext(c.ctx,c.result,c.futureQueue);
+        score+=this.profile.futureWeight*this.futureValue(
+          c.result.board,c.futureQueue,this.planDepth,nctx
+        );
+        if(c.hold)score-=.05;
+        c.score=score;
+        continue;
+      }
+
+      return;
+    }
+  }
+  pickIndex(all){
+    const weights=this.profile.mistakeWeights;
+    if(!weights||all.length<2)return 0;
+    const best=all[0].score;
+    const eligible=all.filter(c=>c.score>=best-this.profile.mistakeWindow).slice(0,weights.length);
+    if(eligible.length<=1)return 0;
+    const w=weights.slice(0,eligible.length),sum=w.reduce((a,b)=>a+b,0);
+    let r=this.rng.next()*sum;
+    for(let i=0;i<w.length;i++){r-=w[i];if(r<=0)return i}
+    return 0;
+  }
+  finishPlan(){
+    const g=this.game,all=this.planWork||[];
+    all.sort((a,b)=>b.score-a.score);
+    g.lastCandidates=all.slice(0,10);
+    if(!all.length){
+      this.plan=null;this.planning=false;this.planningPhase='idle';return;
+    }
+    const idx=this.pickIndex(all),pick=all[Math.min(idx,all.length-1)];
+    this.plan={
+      hold:pick.hold,path:pick.path,target:pick.p,score:pick.score,
+      result:pick.result,analysis:pick.analysis,rank:idx+1,type:pick.type,
+      lastRotate:!!pick.lastRotate,kickIndex:pick.kickIndex||0
+    };
+    this.planning=false;this.planningPhase='idle';this.actionIndex=0;this.actionAcc=0;
+    const steps=Math.max(1,this.plan?.path?.length||1);
+    this.actionDelay=clamp((this.placeAt*.72)/steps,8,50);
+    g.aiThought=this.describe(this.plan);
+  }
+  describe(p){
+    const a=p.analysis||aiEvaluate(this.game.board,p.result,this.style,this.context(),this.profile);
+    const tag=p.result.tspin!=='none'?` / ${p.result.tspin==='full'?'T-SPIN':'MINI'}`:'';
+    const vs=this.profile.opponentAware>0?` / opp ${(a.oppDanger*100).toFixed(0)}%`:'';
+    return `Lv.${this.level} ${this.profile.label}\n目標: ${p.type} x=${p.target.x} r=${p.target.rot}${tag}\n評価 ${p.score.toFixed(2)} / ATK ${a.attack} / holes ${a.features.holes} / H ${a.features.maxHeight}\nTetrisReady ${a.tetrisReady||0} / TSpinReady ${(a.tspinReady||0).toFixed(1)} / danger ${(a.selfDanger*100).toFixed(0)}%${vs}`;
+  }
+  update(dt){
+    const g=this.game;if(g.gameOver||g.finished||!g.active)return;
+    if(this.lastPieceCount!==g.pieces)this.onSpawn();
+    this.pieceClock+=dt;
+    if(this.planning){
+      // Search, root scoring, and future lookahead are all time-sliced.
+      const budget=APP.mode==='cpu_cpu'?1.10:1.55;
+      this.processPlanning(budget);
+      if(this.planning)return;
+    }
+    if(!this.plan){this.beginPlan();if(this.planning||!this.plan)return}
+    this.actionAcc+=dt;
+    if(this.plan.hold){
+      if(this.actionAcc>=Math.min(55,this.actionDelay)){
+        APP.dispatch(g,'hold',true,true);this.plan.hold=false;this.actionAcc=0;
+      }else return;
+    }
+    while(this.actionIndex<this.plan.path.length){
+      if(this.actionAcc<this.actionDelay)break;
+      this.actionAcc-=this.actionDelay;
+      const a=this.plan.path[this.actionIndex++];
+      APP.dispatch(g,a,true,true);
+    }
+    if(this.actionIndex>=this.plan.path.length&&this.pieceClock>=this.placeAt){
+      APP.dispatch(g,'hard',true,true);this.plan=null;
+      if(!g.gameOver&&!g.finished)this.onSpawn();
+    }
+  }
+}
+
+sfx.enabled=false;
+const APP={
+  mode:'cpu_cpu',
+  settings:{lockDelay:500},
+  dispatch(game,action,record=false,fromAI=true){
+    if(!game||game.gameOver||game.finished)return false;
+    if(action==='left')return game.move(-1,fromAI);
+    if(action==='right')return game.move(1,fromAI);
+    if(action==='down')return game.softDrop(fromAI);
+    if(action==='cw')return game.rotate(1,fromAI);
+    if(action==='ccw')return game.rotate(-1,fromAI);
+    if(action==='hard')return game.hardDrop(fromAI);
+    if(action==='hold')return game.doHold();
+    return false;
+  }
+};
+
+function mix32(x){
+  x=(x+0x9E3779B9)>>>0;
+  x=Math.imul(x^(x>>>16),0x21f0aaad);
+  x=Math.imul(x^(x>>>15),0x735a2d97);
+  return (x^(x>>>15))>>>0;
+}
+function planNow(ai){
+  if(!ai.planning&&!ai.plan)ai.beginPlan();
+  let guard=0;
+  while(ai.planning){
+    ai.processPlanning(Infinity);
+    if(++guard>100000)throw new Error('AI planning guard exceeded');
+  }
+  if(!ai.plan)throw new Error('AI failed to produce a plan');
+  return ai.plan;
+}
+function scheduleDelay(ai){
+  const p=ai.plan;
+  const pathLen=p&&p.path?p.path.length:0;
+  const holdDelay=p&&p.hold?Math.min(55,ai.actionDelay):0;
+  const pathDelay=pathLen*ai.actionDelay;
+  return Math.max(ai.placeAt,holdDelay+pathDelay);
+}
+function boardRows(board){
+  return board.slice(HIDDEN_ROWS).map(row=>row.map(v=>v||'.').join(''));
+}
+function fullBoardRows(board){
+  return board.map(row=>row.map(v=>v||'.').join(''));
+}
+function blankExtra(){
+  return {
+    singles:0,doubles:0,triples:0,tetrises:0,
+    tspinZero:0,tspinSingle:0,tspinDouble:0,tspinTriple:0,tspinMini:0,
+    perfectClears:0,noClear:0,difficult:0,b2bDifficult:0,
+    holds:0,grossAttack:0,cancelled:0,clashed:0,garbageApplied:0,
+    maxHeight:0,maxHoles:0,maxPending:0,placements:0,ops:0
+  };
+}
+function classify(extra,result,b2bBefore){
+  if(!result)return;
+  const l=result.lines,t=result.tspin;
+  if(result.perfect)extra.perfectClears++;
+  if(t==='full'){
+    if(l===0)extra.tspinZero++;
+    else if(l===1)extra.tspinSingle++;
+    else if(l===2)extra.tspinDouble++;
+    else if(l===3)extra.tspinTriple++;
+  }else if(t==='mini'){
+    extra.tspinMini++;
+  }else{
+    if(l===0)extra.noClear++;
+    else if(l===1)extra.singles++;
+    else if(l===2)extra.doubles++;
+    else if(l===3)extra.triples++;
+    else if(l===4)extra.tetrises++;
+  }
+  const difficult=l===4||(t!=='none'&&l>0);
+  if(difficult)extra.difficult++;
+  if(difficult&&b2bBefore)extra.b2bDifficult++;
+}
+function clearLabel(result){
+  if(!result)return 'TOP OUT';
+  const l=result.lines,t=result.tspin;
+  if(result.perfect)return `PC + ${t==='full'?'T-SPIN ':''}${['NO CLEAR','SINGLE','DOUBLE','TRIPLE','TETRIS'][l]||l}`;
+  if(t==='full')return `T-SPIN ${['ZERO','SINGLE','DOUBLE','TRIPLE'][l]||l}`;
+  if(t==='mini')return `T-SPIN MINI${l?` ${['','SINGLE','DOUBLE','TRIPLE'][l]}`:''}`;
+  return ['NO CLEAR','SINGLE','DOUBLE','TRIPLE','TETRIS'][l]||`${l} LINES`;
+}
+function makeAgent(game,cfg,seed,logical,physical){
+  const ai=new TetrisAI(game,{
+    level:+cfg.level,pps:+cfg.pps,style:cfg.style,seed,
+    mlModel:cfg.mlModel||null,mlScale:cfg.mlScale==null?1:+cfg.mlScale,
+    overlay:cfg.overlay||null,overlayScale:cfg.overlayScale==null?2:+cfg.overlayScale
+  });
+  const agent={game,ai,cfg,logical,physical,nextTime:0,extra:blankExtra()};
+  ai.onSpawn();
+  planNow(ai);
+  agent.nextTime=scheduleDelay(ai);
+  return agent;
+}
+function executePlacement(agent,t,detailed,events,turboDirect=true){
+   const g=agent.game,ai=agent.ai,p=ai.plan;
+   if(!p||g.gameOver)return;
+   const pre={
+     pieces:g.pieces,attacks:g.attacks,lines:g.lines,
+     pending:g.pendingGarbage,b2b:g.b2b,combo:g.combo,
+     received:g.received,score:g.score
+   };
+   const predicted=p.result;
+   const placedType=p.type;
+   const path=(p.path||[]).slice();
+   agent.extra.ops+=path.length+(p.hold?1:0)+1;
+
+   if(p.hold){APP.dispatch(g,'hold',false,true);agent.extra.holds++}
+
+   if(turboDirect && !g.gameOver && g.active){
+     // The AI has already proved this target reachable. For headless benchmarking,
+     // skip replaying every input and lock directly at the chosen grounded state.
+     g.active={...p.target};
+     g.lastAction=p.lastRotate?'rotate':'hard';
+     g.lastKickIndex=p.kickIndex||0;
+     g.lockPiece();
+   }else{
+     for(const a of path)APP.dispatch(g,a,false,true);
+     APP.dispatch(g,'hard',false,true);
+   }
+
+   const locked=g.pieces>pre.pieces;
+   if(locked&&predicted){
+     const comboAfter=predicted.lines>0?pre.combo+1:-1;
+     const gross=attackFor(predicted.lines,predicted.tspin,pre.b2b,comboAfter,predicted.perfect);
+     const cancelled=Math.min(gross,pre.pending);
+     const sent=Math.max(0,gross-cancelled);
+     const applied=Math.min(8,Math.max(0,pre.pending-cancelled));
+     classify(agent.extra,predicted,pre.b2b);
+     agent.extra.grossAttack+=gross;
+     agent.extra.cancelled+=cancelled;
+     agent.extra.garbageApplied+=applied;
+     agent.extra.placements++;
+     const bf=boardFeatures(g.board);
+     agent.extra.maxHeight=Math.max(agent.extra.maxHeight,bf.maxHeight);
+     agent.extra.maxHoles=Math.max(agent.extra.maxHoles,bf.holes);
+     agent.extra.maxPending=Math.max(agent.extra.maxPending,pre.pending);
+     if(detailed){
+       events.push({
+         n:events.length+1,t:Math.round(t),side:agent.logical,physical:agent.physical,
+         piece:placedType,hold:!!p.hold,ops:path.length+(p.hold?1:0)+1,
+         clear:clearLabel(predicted),lines:predicted.lines,tspin:predicted.tspin,
+         gross,cancelled,sent,incoming:pre.pending,garbageApplied:applied,
+         combo:g.combo,b2b:g.b2b,height:bf.maxHeight,holes:bf.holes,
+         totalAttack:g.attacks,totalLines:g.lines,totalPieces:g.pieces,
+         score:g.score
+       });
+     }
+   }else if(detailed){
+     const bf=boardFeatures(g.board);
+     events.push({
+       n:events.length+1,t:Math.round(t),side:agent.logical,physical:agent.physical,
+       piece:placedType,hold:!!p.hold,ops:path.length+(p.hold?1:0)+1,
+       clear:'TOP OUT',lines:0,tspin:'none',gross:0,cancelled:0,sent:0,
+       incoming:pre.pending,garbageApplied:0,combo:g.combo,b2b:g.b2b,
+       height:bf.maxHeight,holes:bf.holes,totalAttack:g.attacks,totalLines:g.lines,
+       totalPieces:g.pieces,score:g.score
+     });
+   }
+
+   ai.plan=null;
+   ai.planning=false;
+   ai.planningPhase='idle';
+   if(!g.gameOver&&!g.finished){
+     ai.onSpawn();
+     planNow(ai);
+     agent.nextTime=t+scheduleDelay(ai);
+   }else{
+     agent.nextTime=Infinity;
+   }
+ }
+
+function gameSummary(agent,duration,simMode="pps"){
+  const g=agent.game,e=agent.extra;
+  return {
+    logical:agent.logical,physical:agent.physical,
+    level:agent.ai.level,ppsSetting:agent.ai.pps,style:agent.ai.style,
+    pieces:g.pieces,lines:g.lines,score:g.score,attacks:g.attacks,received:g.received,
+    pendingGarbage:g.pendingGarbage,tetrises:g.tetrisCount,tspins:g.tspinCount,
+    tsd:g.tspinDouble,perfectClears:g.perfectClears,maxCombo:g.maxCombo,
+    ppsActual:simMode==='pps'&&duration>0?g.pieces/(duration/1000):null,
+    apm:simMode==='pps'&&duration>0?g.attacks/(duration/60000):null,
+    attackPerPiece:g.pieces?g.attacks/g.pieces:0,
+    attackPer100:g.pieces?100*g.attacks/g.pieces:0,
+    singles:e.singles,doubles:e.doubles,triples:e.triples,
+    tspinZero:e.tspinZero,tspinSingle:e.tspinSingle,tspinDouble:e.tspinDouble,
+    tspinTriple:e.tspinTriple,tspinMini:e.tspinMini,
+    noClear:e.noClear,difficult:e.difficult,b2bDifficult:e.b2bDifficult,
+    holds:e.holds,grossAttack:e.grossAttack,cancelled:e.cancelled,clashed:e.clashed,
+    garbageApplied:e.garbageApplied,maxHeight:e.maxHeight,maxHoles:e.maxHoles,
+    maxPending:e.maxPending,avgOps:g.pieces?e.ops/g.pieces:0,
+    gameOver:g.gameOver,board:boardRows(g.board)
+  };
+}
+
+
+function resetAgentPlan(agent){
+  const ai=agent.ai;
+  ai.plan=null;ai.planning=false;ai.planningPhase='idle';
+  ai.planWork=[];ai.planWorkIndex=0;
+}
+function prepareTurboNext(agent){
+  const g=agent.game,ai=agent.ai;
+  resetAgentPlan(agent);
+  if(g.gameOver||g.finished){agent.nextTime=Infinity;return}
+  ai.onSpawn();
+  planNow(ai);
+}
+/*
+  Commit only this CPU's chosen placement.
+  IMPORTANT: this does NOT cancel incoming garbage, raise garbage, send attack,
+  or plan the next piece. Those effects are settled after BOTH CPUs have locked.
+*/
+function commitTurboLocal(agent,round,detailMode=false){
+  const g=agent.game,ai=agent.ai,p=ai.plan;
+  const fullDetail=detailMode===true||detailMode==='full';
+  const featureDetail=fullDetail||detailMode==='teacher'||detailMode==='training';
+  const teacherDetail=fullDetail||detailMode==='teacher';
+  const boardBefore=fullDetail?fullBoardRows(g.board):null;
+  const chosenFeatures=featureDetail&&p?.analysis?.mlFeatures?p.analysis.mlFeatures.slice():null;
+  const chosenAIScore=teacherDetail&&p?+p.score:null;
+  const candidateSamples=teacherDetail?(g.lastCandidates||[]).slice(0,6).map(c=>({
+    f:c.analysis?.mlFeatures?c.analysis.mlFeatures.slice():null,score:+c.score
+  })).filter(c=>c.f):null;
+  if(!p||g.gameOver)return {
+    agent,pre:{pending:g.pendingGarbage,b2b:g.b2b,combo:g.combo,pieces:g.pieces},
+    locked:false,gross:0,result:null,placedType:p?.type||g.active?.type||'?',
+    hold:false,ops:0,topoutCause:g.gameOver?'preexisting':null,
+    boardBefore,boardAfterLock:boardBefore,placementCells:[],target:null,path:[],
+    lastRotate:false,kickIndex:0
+  };
+
+  const pre={
+    pieces:g.pieces,attacks:g.attacks,lines:g.lines,pending:g.pendingGarbage,
+    b2b:g.b2b,combo:g.combo,received:g.received,score:g.score
+  };
+  const path=(p.path||[]).slice(),placedType=p.type;
+  const ops=path.length+(p.hold?1:0)+1;
+  const target=p.target?{x:p.target.x,y:p.target.y,rot:p.target.rot,type:p.target.type}:null;
+  agent.extra.ops+=ops;
+  if(p.hold){
+    APP.dispatch(g,'hold',false,true);
+    agent.extra.holds++;
+    if(g.gameOver||!g.active){
+      resetAgentPlan(agent);
+      return {agent,pre,locked:false,gross:0,result:null,placedType,hold:true,ops,topoutCause:'hold_spawn',
+        boardBefore,boardAfterLock:fullDetail?fullBoardRows(g.board):null,placementCells:[],target,path,
+        lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0};
+    }
+  }
+
+  // The planner already proved target reachability. Direct-lock that exact state.
+  g.active={...p.target};
+  g.lastAction=p.lastRotate?'rotate':'hard';
+  g.lastKickIndex=p.kickIndex||0;
+  const piece={...g.active};
+  const placementCells=fullDetail?cellsOf(piece).map(([x,y])=>[x,y]):null;
+  const tspin=detectTSpin(g.board,piece,g.lastAction==='rotate',g.lastKickIndex);
+
+  for(const [x,y] of cellsOf(piece)){
+    if(y<0){
+      g.topOut();
+      resetAgentPlan(agent);
+      return {agent,pre,locked:false,gross:0,result:null,placedType,hold:!!p.hold,ops,topoutCause:'lockout',
+        boardBefore,boardAfterLock:boardBefore,placementCells,target,path,
+        lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0};
+    }
+    g.board[y][x]=piece.type;
+  }
+
+  g.pieces++;
+  const lines=clearCompletedLines(g.board);
+  const perfect=g.board.every(row=>row.every(v=>!v));
+  if(perfect)g.perfectClears++;
+  const difficult=lines===4||(tspin.type!=='none'&&lines>0);
+  const b2bBefore=g.b2b;
+  if(lines>0){g.combo++;g.maxCombo=Math.max(g.maxCombo,g.combo)}
+  else g.combo=-1;
+  if(difficult)g.b2b=true;else if(lines>0)g.b2b=false;
+  if(lines===4)g.tetrisCount++;
+  if(tspin.type!=='none'){g.tspinCount++;if(lines===2)g.tspinDouble++}
+  g.score+=scoreFor(lines,tspin.type,b2bBefore,g.combo,g.level,perfect);
+  g.lines+=lines;
+
+  const boardAfterLock=fullDetail?fullBoardRows(g.board):null;
+  const result={board:deepBoard(g.board),lines,tspin:tspin.type,perfect};
+  const gross=attackFor(lines,tspin.type,b2bBefore,g.combo,perfect);
+  classify(agent.extra,result,b2bBefore);
+  agent.extra.grossAttack+=gross;
+  agent.extra.placements++;
+
+  // A locked piece is no longer an active falling piece while garbage rises.
+  // Leaving it active makes applyGarbage collide with the piece that was just
+  // written into the board and can create phantom upward movement/top-outs.
+  g.active=null;
+  resetAgentPlan(agent);
+  return {agent,pre,locked:true,gross,result,placedType,hold:!!p.hold,ops,topoutCause:null,
+    boardBefore,boardAfterLock,placementCells,target,path,lastRotate:!!p.lastRotate,kickIndex:p.kickIndex||0,
+    chosenFeatures,chosenAIScore,candidateSamples};
+}
+function settleTurboRound(agentA,agentB,round,detailMode,events){
+  const fullDetail=detailMode===true||detailMode==='full';
+  // Both plans were created from the same settled round-start state.
+  const oa=commitTurboLocal(agentA,round,detailMode);
+  const ob=commitTurboLocal(agentB,round,detailMode);
+  const outs=[oa,ob];
+
+  // 1) Each CPU first cancels garbage that was already queued BEFORE this round.
+  for(const o of outs){
+    const g=o.agent.game,e=o.agent.extra;
+    o.cancelled=o.locked?Math.min(o.gross,o.pre.pending):0;
+    o.postSelf=o.locked?Math.max(0,o.gross-o.cancelled):0;
+    e.cancelled+=o.cancelled;
+    e.maxPending=Math.max(e.maxPending,o.pre.pending||0);
+
+    if(o.locked&&!g.gameOver){
+      g.pendingGarbage=Math.max(0,o.pre.pending-o.cancelled);
+      const requested=Math.min(8,g.pendingGarbage);
+      g.pendingGarbage-=requested;
+      o.garbageApplied=requested?g.applyGarbage(requested):0;
+      e.garbageApplied+=o.garbageApplied;
+      if(g.gameOver&&!o.topoutCause)o.topoutCause='garbage';
+    }else{
+      o.garbageApplied=0;
+    }
+  }
+
+  // 2) Same-round outgoing attacks meet each other simultaneously.
+  // Only the residual is actually sent and counted as Attack.
+  const clash=Math.min(oa.postSelf||0,ob.postSelf||0);
+  oa.clashed=clash;ob.clashed=clash;
+  oa.agent.extra.clashed+=clash;ob.agent.extra.clashed+=clash;
+  oa.sent=Math.max(0,(oa.postSelf||0)-clash);
+  ob.sent=Math.max(0,(ob.postSelf||0)-clash);
+  oa.agent.game.attacks+=oa.sent;
+  ob.agent.game.attacks+=ob.sent;
+
+  // Newly sent garbage is queued for the opponent's NEXT placement.
+  if(oa.sent>0&&!ob.agent.game.gameOver)ob.agent.game.receiveGarbage(oa.sent);
+  if(ob.sent>0&&!oa.agent.game.gameOver)oa.agent.game.receiveGarbage(ob.sent);
+
+  // 3) Spawn both next pieces only after all round effects have been settled.
+  for(const o of outs){
+    const g=o.agent.game;
+    if(!g.gameOver&&!g.finished){
+      if(!g.spawn()&&!o.topoutCause)o.topoutCause='spawn';
+    }
+  }
+
+  // Snapshot/log after settlement. Always log in logical A/B order, not execution order.
+  for(const o of outs){
+    const g=o.agent.game,e=o.agent.extra,bf=boardFeatures(g.board);
+    e.maxHeight=Math.max(e.maxHeight,bf.maxHeight);
+    e.maxHoles=Math.max(e.maxHoles,bf.holes);
+    if(detailMode){
+      if(detailMode==='telemetry'){
+        const tspin=o.result?.tspin||'none';
+        const lines=o.result?.lines||0;
+        const difficult=!!(o.result&&(lines===4||(tspin!=='none'&&lines>0)));
+        events.push({
+          n:0,t:round,side:o.agent.logical,
+          piece:o.placedType,hold:!!o.hold,ops:o.ops||0,
+          lines,tspin,perfect:!!o.result?.perfect,difficult,
+          gross:o.gross||0,cancelled:o.cancelled||0,clashed:o.clashed||0,sent:o.sent||0,
+          incoming:o.pre.pending||0,garbageApplied:o.garbageApplied||0,
+          pendingAfter:g.pendingGarbage||0,receivedTotal:g.received||0,
+          combo:g.combo,b2b:!!g.b2b,
+          aggregateHeight:bf.aggregate,maxHeight:bf.maxHeight,minHeight:bf.minHeight,
+          heightSpread:bf.maxHeight-bf.minHeight,
+          holes:bf.holes,holeDepth:bf.holeDepth,covered:bf.covered,holeColumns:bf.holeColumns,
+          bumpiness:bf.bump,wells:bf.wells,bestCleanWell:bf.bestCleanWell||0,
+          rowTransitions:bf.rowTransitions,colTransitions:bf.colTransitions,
+          danger:boardDanger(bf),
+          totalAttack:g.attacks,totalLines:g.lines,totalPieces:g.pieces,
+          totalTetrises:g.tetrisCount,totalTspins:g.tspinCount,
+          score:g.score,topout:g.gameOver,topoutCause:o.topoutCause||null
+        });
+      }else if(fullDetail){
+        events.push({
+          n:0,t:round,side:o.agent.logical,physical:o.agent.physical,
+          piece:o.placedType,hold:o.hold,ops:o.ops,
+          clear:o.result?clearLabel(o.result):'TOP OUT',
+          lines:o.result?.lines||0,tspin:o.result?.tspin||'none',
+          gross:o.gross||0,cancelled:o.cancelled||0,clashed:o.clashed||0,sent:o.sent||0,
+          incoming:o.pre.pending||0,garbageApplied:o.garbageApplied||0,
+          combo:g.combo,b2b:g.b2b,height:bf.maxHeight,holes:bf.holes,
+          totalAttack:g.attacks,totalLines:g.lines,totalPieces:g.pieces,score:g.score,
+          topout:g.gameOver,topoutCause:o.topoutCause,
+          boardBefore:o.boardBefore,boardAfterLock:o.boardAfterLock,boardAfter:fullBoardRows(g.board),
+          placementCells:o.placementCells||[],target:o.target||null,path:o.path||[],
+          lastRotate:!!o.lastRotate,kickIndex:o.kickIndex||0,
+          mlFeatures:o.chosenFeatures||null,aiScore:o.chosenAIScore,candidateSamples:o.candidateSamples||null
+        });
+      }else if(detailMode==='teacher'){
+        events.push({n:0,t:round,side:o.agent.logical,sent:o.sent||0,height:bf.maxHeight,holes:bf.holes,
+          mlFeatures:o.chosenFeatures||null,candidateSamples:o.candidateSamples||null});
+      }else{
+        events.push({n:0,t:round,side:o.agent.logical,sent:o.sent||0,height:bf.maxHeight,holes:bf.holes,
+          mlFeatures:o.chosenFeatures||null});
+      }
+    }
+  }
+  if(detailMode){
+    events.sort((x,y)=>x.t-y.t || (x.side==='A'?-1:1));
+    for(let i=0;i<events.length;i++)events[i].n=i+1;
+  }
+
+  // Plans for the next round see the same fully-settled opponent state.
+  if(!agentA.game.gameOver&&!agentB.game.gameOver){
+    prepareTurboNext(agentA);
+    prepareTurboNext(agentB);
+  }
+}
+
+function simulateMatch(cfg,matchIndex=0,detailMode=false){
+   const paired=!!cfg.pairedSeeds;
+   const seedIndex=paired?Math.floor(matchIndex/2):matchIndex;
+   const seed=mix32((cfg.baseSeed>>>0)+Math.imul(seedIndex+1,0x9E3779B9));
+   const swapped=paired?(matchIndex%2===1):(!!cfg.swapSides && (matchIndex%2===1));
+   const leftLogical=swapped?'B':'A',rightLogical=swapped?'A':'B';
+   const leftCfg=swapped?cfg.B:cfg.A,rightCfg=swapped?cfg.A:cfg.B;
+   let g1,g2;
+   const bagSeedA=cfg.independentBags?mix32(seed^0x13579BDF):seed;
+   const bagSeedB=cfg.independentBags?mix32(seed^0x2468ACE1):seed;
+   const leftGameSeed=leftLogical==='A'?bagSeedA:bagSeedB;
+   const rightGameSeed=rightLogical==='A'?bagSeedA:bagSeedB;
+   g1=new TetrisGame({id:'p1',name:leftLogical,mode:'cpu_cpu',seed:leftGameSeed,
+     onAttack:(g,n)=>g2&&g2.receiveGarbage(n),onTopOut:()=>{},onFinish:()=>{},onEvent:()=>{}});
+   g2=new TetrisGame({id:'p2',name:rightLogical,mode:'cpu_cpu',seed:rightGameSeed,
+     onAttack:(g,n)=>g1&&g1.receiveGarbage(n),onTopOut:()=>{},onFinish:()=>{},onEvent:()=>{}});
+   g1.opponent=g2;g2.opponent=g1;
+
+   // AI RNG belongs to logical CPU identity, never to physical left/right seat.
+   // Therefore a paired side-swap replays the exact same A and B randomness.
+   const aiSeedA=(seed+11)>>>0,aiSeedB=(seed+29)>>>0;
+   const leftAISeed=leftLogical==='A'?aiSeedA:aiSeedB;
+   const rightAISeed=rightLogical==='A'?aiSeedA:aiSeedB;
+   const left=makeAgent(g1,leftCfg,leftAISeed,leftLogical,'p1');
+   const right=makeAgent(g2,rightCfg,rightAISeed,rightLogical,'p2');
+   const byLogicalAgent={};byLogicalAgent[leftLogical]=left;byLogicalAgent[rightLogical]=right;
+   const Aagent=byLogicalAgent.A,Bagent=byLogicalAgent.B;
+
+   let t=0,events=[];
+   const maxPieces=Math.max(20,+cfg.maxPieces||600);
+   const simMode=cfg.simMode==='pps'?'pps':'turbo';
+   let reason='piece_limit',rounds=0;
+
+   if(simMode==='turbo'){
+     // FAIR TURBO: both CPUs make one move from the same round-start state.
+     // No first-mover exists inside a round.
+     while(!g1.gameOver&&!g2.gameOver && rounds<maxPieces){
+       rounds++;
+       t=rounds;
+       settleTurboRound(Aagent,Bagent,rounds,detailMode,events);
+     }
+   }else{
+     // Legacy virtual-PPS mode intentionally keeps chronological event ordering.
+     const maxMs=Math.max(1000,(+cfg.maxSeconds||180)*1000);
+     while(t<maxMs && !g1.gameOver && !g2.gameOver &&
+           g1.pieces<maxPieces && g2.pieces<maxPieces){
+       let a=(left.nextTime<=right.nextTime)?left:right;
+       if(!Number.isFinite(a.nextTime)){reason='stalled';break}
+       t=a.nextTime;
+       if(t>maxMs){t=maxMs;reason='timeout';break}
+       executePlacement(a,t,!!detailMode,events,true);
+     }
+     if(!g1.gameOver&&!g2.gameOver&&t>=maxMs)reason='timeout';
+   }
+
+   let winner=null,winnerPhysical=null;
+   if(g1.gameOver&&!g2.gameOver){winner=rightLogical;winnerPhysical='p2';reason='topout'}
+   else if(g2.gameOver&&!g1.gameOver){winner=leftLogical;winnerPhysical='p1';reason='topout'}
+   else if(g1.gameOver&&g2.gameOver){reason='double_topout'}
+   else if((simMode==='turbo'&&rounds>=maxPieces)||g1.pieces>=maxPieces||g2.pieces>=maxPieces){reason='piece_limit'}
+
+   const durationMetric=simMode==='pps'?t:rounds;
+   const byLogical={};
+   byLogical[leftLogical]=gameSummary(left,durationMetric,simMode);
+   byLogical[rightLogical]=gameSummary(right,durationMetric,simMode);
+   return {
+     matchIndex,seed,seedIndex,paired,pairIndex:paired?seedIndex:null,pairLeg:paired?(matchIndex%2):null,
+     swapped,winner,winnerPhysical,reason,simMode,
+     durationMs:simMode==='pps'?Math.round(t):null,
+     rounds:simMode==='turbo'?rounds:null,
+     A:byLogical.A,B:byLogical.B,
+     events:detailMode?events:undefined
+   };
+ }
+let cancelled=new Set();
+self.onmessage=e=>{
+  const m=e.data||{};
+  if(m.type==='cancel'){cancelled.add(m.jobId);return}
+  if(m.type==='single'){
+    try{
+      const result=simulateMatch(m.config,m.matchIndex||0,m.detailMode||'full');
+      self.postMessage({type:'singleResult',jobId:m.jobId,result});
+    }catch(err){
+      self.postMessage({type:'error',jobId:m.jobId,message:String(err&&err.stack||err)});
+    }
+    return;
+  }
+  if(m.type==='batch'){
+    const indices=(m.indices||[]).slice();
+    const results=[];
+    let pos=0;
+    const runNext=()=>{
+      if(cancelled.has(m.jobId)){self.postMessage({type:'cancelled',jobId:m.jobId,count:results.length});return}
+      if(pos>=indices.length){self.postMessage({type:'batchResult',jobId:m.jobId,results});return}
+      try{
+        const idx=indices[pos++];
+        results.push(simulateMatch(m.config,idx,false));
+        self.postMessage({type:'progress',jobId:m.jobId,count:1});
+        setTimeout(runNext,0);
+      }catch(err){
+        self.postMessage({type:'error',jobId:m.jobId,message:String(err&&err.stack||err)});
+      }
+    };
+    runNext();
+  }
+};
+</script>
+
+<script>
+'use strict';
+(() => {
+const $=id=>document.getElementById(id);
+const workerURL=URL.createObjectURL(new Blob([$('worker-code').textContent],{type:'text/javascript'}));
+const LEVEL_NAMES={
+  1:'BEGINNER',2:'BASIC',3:'FOUNDATION',4:'LOOKAHEAD',5:'CHAIN BUILDER',
+  6:'GARBAGE / HOLD',7:'TACTICAL',8:'VS TACTICS',9:'EXPERT'
+};
+for(const id of ['levelA','levelB']){
+  $(id).innerHTML=Object.entries(LEVEL_NAMES).map(([n,s])=>`<option value="${n}">Lv${n} · ${s}</option>`).join('');
+}
+$('levelA').value='5';$('levelB').value='6';
+
+let activeWorkers=[],stopFlag=false,records=[],runConfig=null,wallStart=0,logLines=[];
+
+function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
+function pct(x,d=1){return Number.isFinite(x)?(100*x).toFixed(d)+'%':'—'}
+function mean(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:0}
+function quantile(a,q){
+  if(!a.length)return 0;
+  const b=a.slice().sort((x,y)=>x-y);
+  const p=(b.length-1)*q,lo=Math.floor(p),hi=Math.ceil(p);
+  return lo===hi?b[lo]:b[lo]*(hi-p)+b[hi]*(p-lo);
+}
+function sum(a){return a.reduce((s,x)=>s+x,0)}
+function diff(a,b){return a-b}
+function fmt(x,d=2){return Number.isFinite(x)?x.toFixed(d):'—'}
+
+function baseAI(level,style){
+  return {
+    level:+level,pps:6,style,
+    mlModel:null,mlScale:0,
+    overlay:null,overlayScale:0
+  };
+}
+function makeMatchCfg(){
+  return {
+    A:baseAI($('levelA').value,$('styleA').value),
+    B:baseAI($('levelB').value,$('styleB').value),
+    baseSeed:Number($('seed').value)>>>0,
+    pairedSeeds:false,swapSides:false,
+    simMode:'turbo',
+    maxPieces:Math.max(20,Math.floor(Number($('rounds').value)||450)),
+    maxSeconds:180,
+    independentBags:false
+  };
+}
+
+function telemetrySide(events,side,game){
+  const e=events.filter(x=>x.side===side);
+  const pieces=Math.max(1,game?.pieces||e.length||1);
+  const per100=x=>100*x/pieces;
+  const heights=e.map(x=>x.maxHeight||0);
+  const holes=e.map(x=>x.holes||0);
+  const dangers=e.map(x=>x.danger||0);
+  const gross=sum(e.map(x=>x.gross||0));
+  const cancelled=sum(e.map(x=>x.cancelled||0));
+  const clashed=sum(e.map(x=>x.clashed||0));
+  const sent=sum(e.map(x=>x.sent||0));
+  const applied=sum(e.map(x=>x.garbageApplied||0));
+  return {
+    pieces:game?.pieces||0,
+    avgHeight:mean(heights),p95Height:quantile(heights,.95),maxHeight:Math.max(0,...heights),
+    avgHoles:mean(holes),p95Holes:quantile(holes,.95),maxHoles:Math.max(0,...holes),
+    avgAggregateHeight:mean(e.map(x=>x.aggregateHeight||0)),
+    avgHoleDepth:mean(e.map(x=>x.holeDepth||0)),
+    avgCovered:mean(e.map(x=>x.covered||0)),
+    avgBumpiness:mean(e.map(x=>x.bumpiness||0)),
+    avgWells:mean(e.map(x=>x.wells||0)),
+    avgRowTransitions:mean(e.map(x=>x.rowTransitions||0)),
+    avgColTransitions:mean(e.map(x=>x.colTransitions||0)),
+    avgDanger:mean(dangers),
+    highDangerRate:e.length?dangers.filter(x=>x>=.50).length/e.length:0,
+    criticalDangerRate:e.length?dangers.filter(x=>x>=.75).length/e.length:0,
+    grossAttackPer100:per100(gross),
+    cancelledPer100:per100(cancelled),
+    clashedPer100:per100(clashed),
+    sentPer100:per100(sent),
+    garbageAppliedPer100:per100(applied),
+    attackConversion:gross?sent/gross:0,
+    tetrisPer100:per100(game?.tetrises||0),
+    tspinPer100:per100(game?.tspins||0),
+    holdRate:e.length?e.filter(x=>x.hold).length/e.length:0,
+    b2bRate:e.length?e.filter(x=>x.b2b).length/e.length:0,
+    positiveComboRate:e.length?e.filter(x=>(x.combo||-1)>0).length/e.length:0,
+    maxCombo:game?.maxCombo||0
+  };
+}
+
+function makeRecord(result,wallMs,keepRaw){
+  const events=result.events||[];
+  const A=telemetrySide(events,'A',result.A);
+  const B=telemetrySide(events,'B',result.B);
+  return {
+    matchIndex:result.matchIndex,
+    seed:result.seed,
+    winner:result.winner,
+    reason:result.reason,
+    rounds:result.rounds,
+    wallMs,
+    A,B,
+    finalA:result.A,finalB:result.B,
+    events:keepRaw?events:undefined
+  };
+}
+
+function terminateWorkers(){
+  for(const w of activeWorkers){try{w.terminate()}catch{}}
+  activeWorkers=[];
+}
+function appendLog(s){
+  logLines.push(s);
+  if(logLines.length>150)logLines.shift();
+  $('log').textContent=logLines.join('\n');
+}
+
+function averageSide(side){
+  if(!records.length)return {};
+  const keys=[
+    'avgHeight','p95Height','avgHoles','p95Holes','avgAggregateHeight','avgHoleDepth',
+    'avgCovered','avgBumpiness','avgWells','avgRowTransitions','avgColTransitions',
+    'avgDanger','highDangerRate','criticalDangerRate',
+    'grossAttackPer100','cancelledPer100','clashedPer100','sentPer100','garbageAppliedPer100',
+    'attackConversion','tetrisPer100','tspinPer100','holdRate','b2bRate','positiveComboRate','maxCombo'
+  ];
+  const out={};
+  for(const k of keys)out[k]=mean(records.map(r=>r[side][k]||0));
+  return out;
+}
+
+const METRICS=[
+  ['Gross attack /100','grossAttackPer100',false],
+  ['Sent attack /100','sentPer100',false],
+  ['Cancelled /100','cancelledPer100',false],
+  ['Clashed /100','clashedPer100',false],
+  ['Garbage applied /100','garbageAppliedPer100',false],
+  ['Attack conversion','attackConversion',true],
+  ['平均 height','avgHeight',false],
+  ['P95 height','p95Height',false],
+  ['平均 holes','avgHoles',false],
+  ['P95 holes','p95Holes',false],
+  ['平均 aggregate height','avgAggregateHeight',false],
+  ['平均 hole depth','avgHoleDepth',false],
+  ['平均 covered','avgCovered',false],
+  ['平均 bumpiness','avgBumpiness',false],
+  ['平均 wells','avgWells',false],
+  ['平均 row transitions','avgRowTransitions',false],
+  ['平均 col transitions','avgColTransitions',false],
+  ['平均 danger','avgDanger',true],
+  ['High danger率','highDangerRate',true],
+  ['Critical danger率','criticalDangerRate',true],
+  ['Tetris /100','tetrisPer100',false],
+  ['T-spin /100','tspinPer100',false],
+  ['HOLD率','holdRate',true],
+  ['B2B状態率','b2bRate',true],
+  ['Combo>0率','positiveComboRate',true],
+  ['Max combo','maxCombo',false]
+];
+
+function render(){
+  const n=records.length;
+  const aw=records.filter(r=>r.winner==='A').length;
+  const bw=records.filter(r=>r.winner==='B').length;
+  const dw=n-aw-bw;
+  $('aw').textContent=aw;$('bw').textContent=bw;$('dw').textContent=dw;
+  $('dr').textContent=n?pct(dw/n):'—';
+  $('ar').textContent=n?fmt(mean(records.map(r=>r.rounds||0)),1):'—';
+  $('tm').textContent=n?fmt(mean(records.map(r=>r.wallMs||0))/1000,2)+' s':'—';
+
+  const A=averageSide('A'),B=averageSide('B');
+  $('metricRows').innerHTML=METRICS.map(([label,k,isPct])=>{
+    const av=A[k]||0,bv=B[k]||0,d=av-bv;
+    const f=x=>isPct?pct(x):fmt(x,2);
+    return `<tr><td>${label}</td><td class="a">${f(av)}</td><td class="b">${f(bv)}</td><td>${isPct?pct(d):fmt(d,2)}</td></tr>`;
+  }).join('');
+
+  const total=runConfig?.matches||1;
+  $('bar').style.width=(100*n/total)+'%';
+  $('json').disabled=!n;$('matchCsv').disabled=!n;
+  $('roundCsv').disabled=!n||!runConfig?.keepRaw;
+}
+
+async function runOne(w,cfg,index){
+  return new Promise((resolve,reject)=>{
+    const jobId=`telemetry-${Date.now()}-${index}-${Math.random()}`;
+    const t0=performance.now();
+    w.onmessage=e=>{
+      const m=e.data||{};
+      if(m.jobId!==jobId)return;
+      if(m.type==='singleResult')resolve({result:m.result,wallMs:performance.now()-t0});
+      else if(m.type==='error')reject(new Error(m.message||'worker error'));
+    };
+    w.onerror=e=>reject(new Error(e.message||'worker error'));
+    w.postMessage({type:'single',jobId,config:cfg,matchIndex:index,detailMode:'telemetry'});
+  });
+}
+
+async function start(){
+  terminateWorkers();stopFlag=false;records=[];logLines=[];render();
+  const matches=clamp(Math.floor(Number($('matches').value)||50),1,2000);
+  const workerCount=clamp(Math.floor(Number($('workers').value)||4),1,12);
+  const keepRaw=$('keepRaw').checked;
+  const cfg=makeMatchCfg();
+  runConfig={
+    createdAt:new Date().toISOString(),
+    matches,workers:workerCount,keepRaw,
+    levelA:+$('levelA').value,levelB:+$('levelB').value,
+    styleA:$('styleA').value,styleB:$('styleB').value,
+    maxRounds:cfg.maxPieces,baseSeed:cfg.baseSeed,
+    simMode:'FAIR TURBO',sharedBag:true,
+    mlModel:null,overlay:null
+  };
+
+  if(runConfig.levelA===runConfig.levelB && runConfig.styleA===runConfig.styleB){
+    appendLog('WARNING: A/BのLevel・Styleが同一。Lv5以上では完全対称になりやすく、強弱教師データとしては薄いです。');
+  }
+
+  $('start').disabled=true;$('stop').disabled=false;
+  wallStart=performance.now();
+  let cursor=0,completed=0;
+
+  $('status').textContent=`RUNNING 0/${matches}\nLv${runConfig.levelA} ${runConfig.styleA} vs Lv${runConfig.levelB} ${runConfig.styleB}\nML model: NONE`;
+
+  const workerLoop=async slot=>{
+    const w=new Worker(workerURL);
+    activeWorkers.push(w);
+    while(!stopFlag){
+      const idx=cursor++;
+      if(idx>=matches)break;
+      try{
+        const {result,wallMs}=await runOne(w,cfg,idx);
+        if(stopFlag)break;
+        const rec=makeRecord(result,wallMs,keepRaw);
+        records.push(rec);completed++;
+        const name=result.winner||'DRAW';
+        appendLog(`#${idx+1} ${name} R=${result.rounds} seed=${result.seed} wall=${(wallMs/1000).toFixed(2)}s`);
+        render();
+        const elapsed=(performance.now()-wallStart)/1000;
+        $('status').textContent=
+          `RUNNING ${completed}/${matches}\n`+
+          `Lv${runConfig.levelA} ${runConfig.styleA} vs Lv${runConfig.levelB} ${runConfig.styleB}\n`+
+          `elapsed=${elapsed.toFixed(1)}s / ML model: NONE`;
+      }catch(err){
+        if(!stopFlag)appendLog(`ERROR match #${idx+1}: ${err.message}`);
+      }
+    }
+    try{w.terminate()}catch{}
+    activeWorkers=activeWorkers.filter(x=>x!==w);
+  };
+
+  await Promise.all(Array.from({length:Math.min(workerCount,matches)},(_,i)=>workerLoop(i)));
+  terminateWorkers();
+  $('start').disabled=false;$('stop').disabled=true;
+
+  if(stopFlag){
+    $('status').textContent=`STOPPED ${records.length}/${matches}`;
+  }else{
+    const elapsed=(performance.now()-wallStart)/1000;
+    $('status').textContent=`COMPLETE ${records.length}/${matches}\nelapsed=${elapsed.toFixed(1)}s\nML model: NONE`;
+  }
+  render();
+}
+
+$('start').addEventListener('click',()=>start().catch(err=>{
+  terminateWorkers();$('start').disabled=false;$('stop').disabled=true;
+  $('status').textContent='ERROR\n'+(err?.stack||err);
+}));
+$('stop').addEventListener('click',()=>{
+  stopFlag=true;terminateWorkers();$('stop').disabled=true;appendLog('STOP requested');
+});
+for(const b of document.querySelectorAll('[data-pair]')){
+  b.addEventListener('click',()=>{
+    const [a,c]=b.dataset.pair.split(',');
+    $('levelA').value=a;$('levelB').value=c;
+  });
+}
+
+function csvCell(v){
+  if(v==null)return '';
+  const s=String(v);
+  return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function download(name,text,type='text/plain'){
+  const blob=new Blob([text],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function stamp(){return new Date().toISOString().replace(/[:.]/g,'-')}
+
+$('json').addEventListener('click',()=>{
+  const payload={schema:1,kind:'tetris-match-telemetry',config:runConfig,records};
+  download(`tetris_telemetry_${stamp()}.json`,JSON.stringify(payload),'application/json');
+});
+
+$('matchCsv').addEventListener('click',()=>{
+  const metricKeys=METRICS.map(x=>x[1]);
+  const head=['matchIndex','seed','winner','reason','rounds','wallMs',
+    ...metricKeys.map(k=>'A_'+k),...metricKeys.map(k=>'B_'+k)];
+  const rows=[head.join(',')];
+  for(const r of records){
+    rows.push([
+      r.matchIndex,r.seed,r.winner||'DRAW',r.reason,r.rounds,r.wallMs,
+      ...metricKeys.map(k=>r.A[k]),...metricKeys.map(k=>r.B[k])
+    ].map(csvCell).join(','));
+  }
+  download(`tetris_match_summary_${stamp()}.csv`,rows.join('\n'),'text/csv');
+});
+
+$('roundCsv').addEventListener('click',()=>{
+  if(!runConfig?.keepRaw)return;
+  const fields=[
+    't','side','piece','hold','ops','lines','tspin','perfect','difficult',
+    'gross','cancelled','clashed','sent','incoming','garbageApplied','pendingAfter','receivedTotal',
+    'combo','b2b','aggregateHeight','maxHeight','minHeight','heightSpread',
+    'holes','holeDepth','covered','holeColumns','bumpiness','wells','bestCleanWell',
+    'rowTransitions','colTransitions','danger','totalAttack','totalLines','totalPieces',
+    'totalTetrises','totalTspins','score','topout','topoutCause'
+  ];
+  const head=['matchIndex','seed','winner','matchRounds',...fields];
+  const rows=[head.join(',')];
+  for(const r of records){
+    for(const e of (r.events||[])){
+      rows.push([r.matchIndex,r.seed,r.winner||'DRAW',r.rounds,...fields.map(k=>e[k])].map(csvCell).join(','));
+    }
+  }
+  download(`tetris_round_telemetry_${stamp()}.csv`,rows.join('\n'),'text/csv');
+});
+
+window.addEventListener('beforeunload',terminateWorkers);
+render();
+})();
+</script>
+</body>
+</html>
