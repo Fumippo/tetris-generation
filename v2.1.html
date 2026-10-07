@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tetris AI AutoTrainer V2.1 · Champion Lab</title>
+<title>Tetris AI AutoTrainer V2.1.1 · Champion Lab</title>
 <style>
 :root{
   --bg:#070a12;--panel:#101522;--panel2:#151c2c;--line:#263149;
@@ -114,15 +114,15 @@ table.log{border-collapse:collapse;width:100%;font-size:11px;white-space:nowrap}
 <div class="wrap">
   <div class="hero">
     <div>
-      <h1>TETRIS AI AUTOTRAINER V2.1 · CHAMPION LAB</h1>
+      <h1>TETRIS AI AUTOTRAINER V2.1.1 · CHAMPION LAB</h1>
       <p>AI v5 / FAIR TURBOを土台に、Root Champion保護・優先Replay・AdamW・Hall of Fame・逐次Promotion・holdout評価・フェーズ途中Checkpointまで1ファイルで自走します。既存Championを壊さず、まずMaster本体を強くする構成です。</p>
     </div>
-    <div class="badge">Engine <b>AI v5 / FAIR TURBO</b><br>AutoTrainer V2.1 champion-safe edition</div>
+    <div class="badge">Engine <b>AI v5 / FAIR TURBO</b><br>AutoTrainer V2.1.1 champion-safe edition</div>
   </div>
 
 
   <div class="card autotrain" id="autotrain-card">
-    <h2>AutoTrainer V2.1 · Champion-safe / Time-budgeted</h2>
+    <h2>AutoTrainer V2.1.1 · Champion-safe / Time-budgeted</h2>
     <div class="lead">
       V2.1は<b>Root Championを永久保存</b>し、Master TrainingとStyle / Level校正を分離します。
       Masterでは balanced中心Self-play → 優先Replay → AdamW適応更新 → Wilson区間による逐次Promotion →
@@ -2570,7 +2570,7 @@ window.downloadBatchCSV=()=>{
       TR.state=upgradePackModels(obj);TR.state.activeCycle=0;TR.state.replay=TR.state.replay||[];TR.state.anchorHistory=TR.state.anchorHistory||[];TR.config=TR.state.config;writeConfigToUI(TR.config);saveCheckpoint('IMPORTED_STATE');trLog(`V2 Full State読込: Champion v${TR.state.championVersion||0}, completed C${TR.state.lastCompletedCycle||0}`,'tr-good');return;
     }
     if(obj?.champion&&obj?.overlay){
-      const cfg=readConfig();TR.state=defaultState(cfg);TR.state.champion=upgradeModelInput(obj.champion,FEAT);TR.state.championVersion=Math.max(1,+obj.championVersion||(+q('tr-import-version').value||1));TR.state.overlay=(obj.overlay||[]).slice(0,OVERLAY_FEAT);while(TR.state.overlay.length<OVERLAY_FEAT)TR.state.overlay.push(0);TR.state.styleHeads={};for(const [k,m] of Object.entries(obj.styleHeads||{}))TR.state.styleHeads[k]=m?upgradeModelInput(m,FEAT):m;TR.state.levelScales=(obj.levelScales||TR.state.levelScales).slice();TR.state.notes.push(`Imported model pack ${obj.engine||'unknown'} ${obj.created||''}`);TR.state.stage='IMPORTED_MODEL';TR.config=cfg;saveCheckpoint('IMPORTED_MODEL');trLog(`Model JSON読込: ${obj.champion.input||'?'}→${FEAT} features, Champion label v${TR.state.championVersion}`,'tr-good');return;
+      const cfg=readConfig();TR.state=defaultState(cfg);TR.state.champion=upgradeModelInput(obj.champion,FEAT);TR.state.championVersion=Math.max(1,+obj.championVersion||(+q('tr-import-version').value||1));TR.state.overlay=(obj.overlay||[]).slice(0,OVERLAY_FEAT);while(TR.state.overlay.length<OVERLAY_FEAT)TR.state.overlay.push(0);TR.state.styleHeads={};for(const [k,m] of Object.entries(obj.styleHeads||{}))TR.state.styleHeads[k]=m?upgradeModelInput(m,FEAT):m;TR.state.levelScales=(obj.levelScales||TR.state.levelScales).slice();TR.state.notes.push(`Imported model pack ${obj.engine||'unknown'} ${obj.created||''}`);TR.state.stage='IMPORTED_MODEL';TR.config=cfg;ensureRootState();saveCheckpoint('IMPORTED_MODEL');trLog(`Model JSON読込: ${obj.champion.input||'?'}→${FEAT} features, Champion v${TR.state.championVersion}, Root v${TR.state.rootVersion}`,'tr-good');return;
     }
     throw new Error('対応するModel / State JSONではありません');
   }
@@ -2967,7 +2967,19 @@ window.downloadBatchCSV=()=>{
     }finally{commitElapsed();cancelWorkers();setControls(false);TR.running=false;TR.paused=false;TR.sessionStartedAt=0;updateKPIs()}
   }
 
-  q('tr-start').addEventListener('click',()=>{TR.state=null;TR.config=null;runPipeline(false)});
+  q('tr-start').addEventListener('click',()=>{
+    if(TR.state?.champion && TR.state?.stage==='IMPORTED_MODEL'){
+      const ui=readConfig();
+      TR.config={...(TR.state.config||{}),...ui};
+      TR.state.config=TR.config;
+      ensureRootState();
+      saveCheckpoint('IMPORTED_MODEL_READY');
+      trLog(`Imported Champion v${TR.state.championVersion||0} / Root v${TR.state.rootVersion||0} から新規Master runを開始`,'tr-good');
+      runPipeline(true);
+      return;
+    }
+    TR.state=null;TR.config=null;runPipeline(false);
+  });
   q('tr-pause').addEventListener('click',()=>{if(!TR.running)return;TR.paused=!TR.paused;q('tr-pause').textContent=TR.paused?'再開':'一時停止';trLog(TR.paused?'一時停止要求：現在のmatch終了後に待機':'学習を再開')});
   q('tr-stop').addEventListener('click',()=>{TR.stop=true;TR.paused=false;trLog('安全停止要求：現在のmatch/batch終了後にCheckpointします','tr-warning')});
   q('tr-resume').addEventListener('click',()=>{const x=loadCheckpoint()||loadEmbedded();if(!x){trLog('V2.1 Checkpointがありません','tr-warning');return}TR.state=migrateStateV21(x);const ui=readConfig();TR.config={...(TR.state.config||{}),...ui};TR.state.config=TR.config;ensureRootState();writeConfigToUI(TR.config);updateKPIs();trLog(`Checkpoint読込: completed C${TR.state.lastCompletedCycle||0}, active=${TR.state.activeWork?`C${TR.state.activeWork.cycle}/${TR.state.activeWork.phase}`:'none'}, Champion v${TR.state.championVersion||0}, Root v${TR.state.rootVersion||0}`);runPipeline(true)});
