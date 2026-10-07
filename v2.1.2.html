@@ -2602,12 +2602,69 @@ window.downloadBatchCSV=()=>{
 
   /* ---------- checkpoint / import-export ---------- */
   function defaultState(cfg){return {schema:SCHEMA,engine:'AI-v5-FAIR-V2.1.2',created:new Date().toISOString(),config:cfg,stage:'INIT',activeCycle:0,lastCompletedCycle:0,cycle:0,cyclePhase:'IDLE',activeWork:null,overlay:Array(OVERLAY_FEAT).fill(0),champion:null,championVersion:0,rootChampion:null,rootVersion:0,rootOverlay:null,hall:[],replay:[],replaySeen:0,styleHeads:{},levelScales:[0,.15,.25,.40,.58,.72,.86,1,1.12],totalMatches:0,totalSamples:0,bestPromotion:null,strengthHistory:[],lossHistory:[],anchorHistory:[],rootHistory:[],notes:[],elapsedMs:0,noPromoStreak:0,ambiguousStreak:0,adaptiveLRScale:1,completed:false}}
-  function slimReplayIfNeeded(){if((TR.state?.replay||[]).length>1000){TR.state.replay=TR.state.replay.filter((_,i)=>i%2===0);trLog(`localStorage容量対策: Replayを${TR.state.replay.length}件へ縮小`,'tr-warning')}}
-  function saveCheckpoint(stage){
-    if(!TR.state)return;commitElapsed();TR.state.stage=stage||TR.state.stage;TR.state.cycle=TR.state.lastCompletedCycle||0;TR.state.totalMatches=(TR.state.totalMatches||0)+TR.sessionMatches;TR.state.totalSamples=(TR.state.totalSamples||0)+TR.sessionSamples;TR.sessionMatches=0;TR.sessionSamples=0;
-    try{localStorage.setItem(TKEY,JSON.stringify(TR.state))}catch(e){slimReplayIfNeeded();try{localStorage.setItem(TKEY,JSON.stringify(TR.state))}catch(e2){trLog('CheckpointをlocalStorageへ保存できません。Full State JSONを出力してください。','tr-bad')}}updateKPIs();
+  // Compact only the persisted checkpoint representation.
+  // Training state in memory is NOT thinned, and Replay samples keep every value
+  // used by learning: x / y / priority. Diagnostic metadata is intentionally
+  // omitted from localStorage because it never enters the loss or sampling weight.
+  function packSampleCheckpointV21(s){
+    if(!s)return s;
+    if(Array.isArray(s)&&Array.isArray(s[0]))return s;
+    return [s.x,s.y,s.p==null?1:s.p];
   }
-  function loadCheckpoint(){try{const x=JSON.parse(localStorage.getItem(TKEY)||'null');return x&&x.schema===SCHEMA?x:null}catch{return null}}
+  function unpackSampleCheckpointV21(s){
+    if(Array.isArray(s)&&Array.isArray(s[0]))return {x:s[0],y:s[1],p:s[2]==null?1:s[2]};
+    return s;
+  }
+  function packPromotionResultV21(r){
+    if(!r)return r;
+    const side=x=>({attackPer100:x?.attackPer100||0,maxHeight:x?.maxHeight||0,maxHoles:x?.maxHoles||0});
+    return {winner:r.winner||null,A:side(r.A),B:side(r.B)};
+  }
+  function packCheckpointStateV21(state){
+    const s={...state,replay:(state.replay||[]).map(packSampleCheckpointV21)};
+    if(state.activeWork){
+      const w={...state.activeWork,fresh:(state.activeWork.fresh||[]).map(packSampleCheckpointV21)};
+      if(w.trainStats&&w.trainStats.model)w.trainStats={...w.trainStats,model:undefined};
+      if(w.promotion)w.promotion={...w.promotion,all:(w.promotion.all||[]).map(packPromotionResultV21)};
+      s.activeWork=w;
+    }
+    return {__tetrisV212Packed:1,state:s};
+  }
+  function unpackCheckpointStateV21(obj){
+    if(!obj?.__tetrisV212Packed)return obj;
+    const s=obj.state||{};
+    s.replay=(s.replay||[]).map(unpackSampleCheckpointV21);
+    if(s.activeWork){
+      s.activeWork.fresh=(s.activeWork.fresh||[]).map(unpackSampleCheckpointV21);
+      // Promotion results are already in the exact minimal shape needed by
+      // aggregate()/softAggregateV21(), so no expansion is necessary.
+    }
+    return s;
+  }
+  function saveCheckpoint(stage){
+    if(!TR.state)return;
+    commitElapsed();
+    TR.state.stage=stage||TR.state.stage;
+    TR.state.cycle=TR.state.lastCompletedCycle||0;
+    TR.state.totalMatches=(TR.state.totalMatches||0)+TR.sessionMatches;
+    TR.state.totalSamples=(TR.state.totalSamples||0)+TR.sessionSamples;
+    TR.sessionMatches=0;TR.sessionSamples=0;
+    try{
+      const payload=packCheckpointStateV21(TR.state);
+      localStorage.setItem(TKEY,JSON.stringify(payload));
+    }catch(e){
+      // Never destroy Replay to make a checkpoint fit.
+      trLog('CheckpointをlocalStorageへ保存できません。Replayは削除していません。Full State JSONを出力してください。','tr-bad');
+    }
+    updateKPIs();
+  }
+  function loadCheckpoint(){
+    try{
+      const raw=JSON.parse(localStorage.getItem(TKEY)||'null');
+      const x=unpackCheckpointStateV21(raw);
+      return x&&x.schema===SCHEMA?x:null;
+    }catch{return null}
+  }
   function loadEmbedded(){try{const t=q('autotrain-embedded-model')?.textContent?.trim();if(!t||t==='null')return null;const x=JSON.parse(t);return x&&[2,3,SCHEMA].includes(x.schema)?x:null}catch{return null}}
   function download(name,text,type='application/json'){const a=document.createElement('a'),u=URL.createObjectURL(new Blob([text],{type}));a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
   function exportModel(){
@@ -2791,7 +2848,7 @@ window.downloadBatchCSV=()=>{
     if(obj.schema===3&&obj.config&&obj.champion){
       const x=upgradePackModelsV21(clone(obj));
       const legacyMatches=x.totalMatches||0,legacyBest=x.bestPromotion,legacyStage=x.stage||'unknown';
-      x.schema=SCHEMA;x.engine='AI-v5-FAIR-V2.1.2c';x.config={...readConfig(),...(x.config||{})};
+      x.schema=SCHEMA;x.engine='AI-v5-FAIR-V2.1.2d';x.config={...readConfig(),...(x.config||{})};
 
       // Keep useful learned assets from completed work.
       x.hall=x.hall||[];
@@ -3008,7 +3065,7 @@ window.downloadBatchCSV=()=>{
       if(work.phase==='SELFPLAY'){await collectSelfPlayV21(work,TR.config.spMatches);if(work.nextMatch<TR.config.spMatches){trLog(`C${cycle}: time reserve到達。収集中データを保存してMaster学習終了`,'tr-warning');break}work.phase='COLLECTED';TR.state.cyclePhase='COLLECTED';TR.state.activeWork=work;saveCheckpoint('SELFPLAY_COLLECTED')}
       if(work.phase==='COLLECTED'){
         const oldReplay=sampleReplayV21(Math.min((TR.state.replay||[]).length,Math.round(work.fresh.length*.85)),rng),train=work.fresh.concat(oldReplay),stats=replayStatsV21(train);trLog(`Train set C${cycle}: fresh=${work.fresh.length} replay=${oldReplay.length} decisive=${stats.decisive} critical=${stats.critical} draw=${stats.draw} avgShape=${stats.shape.toFixed(4)}`);
-        const td=adaptiveTrainV21(clone(work.challenger),work.champion,train,cycle,rng);work.challenger=td.model;work.trainStats=td;work.phase='TRAINED';TR.state.cyclePhase='TRAINED';TR.state.activeWork=work;saveCheckpoint('CHALLENGER_TRAINED')
+        const td=adaptiveTrainV21(clone(work.challenger),work.champion,train,cycle,rng);work.challenger=td.model;work.trainStats={...td,model:undefined};work.phase='TRAINED';TR.state.cyclePhase='TRAINED';TR.state.activeWork=work;saveCheckpoint('CHALLENGER_TRAINED')
       }
       const td=work.trainStats||{drift:relativeDistanceV21(work.challenger,work.champion)};const ev=await promotionSequentialV21(work);TR.state.bestPromotion=TR.state.bestPromotion==null?ev.score:Math.max(TR.state.bestPromotion,ev.score);TR.state.strengthHistory.push({x:`S${cycle}`,y:ev.score});
       if(ev.decision){
@@ -3071,7 +3128,7 @@ window.downloadBatchCSV=()=>{
       if(mode==='calibrate'||mode==='full'){
         if(!TR.state.champion)throw new Error('CalibrationにはChampionをImportしてください');await fineTuneStylesV21();await calibrateLevelsV21();await deploymentRegressionV21();
       }
-      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2c完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2c COMPLETE','tr-good');
+      TR.state.completed=true;TR.state.activeCycle=0;if(!TR.state.activeWork)TR.state.cyclePhase='IDLE';saveCheckpoint(hardBudgetExpired()?'BUDGET_DONE':'DONE');setStage('DONE',hardBudgetExpired()?'時間予算到達。途中状態を含め保存済み。':'V2.1.2d完了。Model / Full State / HTMLを出力できます。',1);trLog('AUTOTRAIN V2.1.2d COMPLETE','tr-good');
     }catch(err){
       if(String(err.message||err)==='__TRAINING_STOPPED__'){saveCheckpoint('STOPPED');setStage('STOPPED',TR.state?.activeWork?`C${TR.state.activeWork.cycle} ${TR.state.activeWork.phase} から再開可能`:`completed C${TR.state.lastCompletedCycle||0} から再開可能`);trLog('安全停止しました。フェーズ途中Checkpointを保持しています','tr-warning')}else{saveCheckpoint('ERROR');setStage('ERROR',String(err.message||err));trLog(String(err.stack||err),'tr-bad')}
     }finally{commitElapsed();cancelWorkers();setControls(false);TR.running=false;TR.paused=false;TR.sessionStartedAt=0;updateKPIs()}
@@ -3144,7 +3201,7 @@ window.downloadBatchCSV=()=>{
         if(v2?.champion)trLog('旧V2 Checkpointを検出。必要ならFull State JSONとしてImportしてください。','tr-warning');
       }
     }catch{}
-    trLog('AutoTrainer V2.1.2c ready');
+    trLog('AutoTrainer V2.1.2d ready');
   }
   updateKPIs();
 })();
