@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tetris Content Evaluator Lab v1.0</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#070a0f;--panel:#111722;--panel2:#0b1018;--line:#29344a;
+  --text:#edf3ff;--muted:#98a7bc;--good:#6cdb91;--warn:#ffd166;--bad:#ff7884;
+  --a:#68c9ff;--b:#ff9b78;--accent:#9c88ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1320px;margin:auto;padding:18px}
+h1{font-size:25px;margin:0 0 5px}h2{font-size:17px;margin:0 0 11px}h3{font-size:14px;margin:15px 0 8px}
+p{margin:5px 0;color:var(--muted);line-height:1.55}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px;margin:13px 0}
+.drop{border:1px dashed #53627c;border-radius:11px;padding:18px;text-align:center;background:var(--panel2)}
+.drop.drag{border-color:var(--accent)}
+input,select,button{font:inherit}
+input,select{background:#080d15;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 8px}
+button{background:#18243a;color:var(--text);border:1px solid #3b4a66;border-radius:8px;padding:8px 11px;font-weight:700;cursor:pointer}
+button:hover{border-color:var(--accent)}button:disabled{opacity:.4;cursor:not-allowed}
+.actions,.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.controls label{font-size:11px;color:var(--muted)}
+.controls input,.controls select{display:block;margin-top:3px;min-width:105px}
+.progress{height:10px;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:#080d15;margin-top:8px}
+.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--a),var(--accent))}
+.status{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+.note{font-size:11px;color:var(--muted)}
+.warnbox{border-left:4px solid var(--warn);padding:9px 11px;background:#17150d;color:#e9dfbd;border-radius:7px;margin-top:10px}
+.goodbox{border-left:4px solid var(--good);padding:9px 11px;background:#0c1711;color:#c9f0d5;border-radius:7px;margin-top:10px}
+.badbox{border-left:4px solid var(--bad);padding:9px 11px;background:#180d10;color:#f4cbd0;border-radius:7px;margin-top:10px}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:13px 0}
+.tabs button.active{background:#293657;border-color:#6c87c8}
+.tab{display:none}.tab.active{display:block}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px}
+.kpi span{display:block;color:var(--muted);font-size:10px}.kpi b{font-size:18px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:7px 6px;border-bottom:1px solid #242d40;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+.scroll{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px}
+.runrow{display:grid;grid-template-columns:30px 2fr 90px 90px 1fr;gap:7px;align-items:center;margin:6px 0}
+.runrow input[type="text"],.runrow input[type="number"]{width:100%}
+.runrow .meta{font-size:11px;color:var(--muted)}
+canvas{width:100%;height:360px;background:#080d15;border:1px solid var(--line);border-radius:9px}
+.pos{color:var(--good)}.neg{color:var(--bad)}.neutral{color:var(--warn)}
+.pill{display:inline-block;padding:2px 7px;border:1px solid var(--line);border-radius:99px;font-size:10px;color:var(--muted)}
+.small{font-size:11px}.controls label.check{display:flex;align-items:center;gap:7px}.controls label.check input[type=checkbox]{min-width:auto;margin:0}
+@media(max-width:900px){
+  .kpis{grid-template-columns:repeat(3,1fr)}
+  .runrow{grid-template-columns:28px 1fr 70px 70px}.runrow .meta{grid-column:2/-1}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Tetris Content Evaluator Lab <span class="pill">v1.0</span></h1>
+<p>Round CSVを外部送信せずブラウザ内で集計・学習・交差検証。最終盤を隠した途中評価とDRAWの参考スコアを算出します。</p>
+
+<section class="card">
+<h2>1. 解析条件を決める</h2>
+<div class="controls">
+  <label>Prefix horizons (round)
+    <input id="horizons" value="50,100,200,300,500">
+  </label>
+  <label>末尾除外
+    <input id="tailExclude" type="number" value="50" min="1" max="500">
+  </label>
+  <label>Grouped CV folds
+    <input id="folds" type="number" value="5" min="2" max="10">
+  </label>
+  <label>Ridge λ
+    <input id="lambda" type="number" value="1.0" min="0" step="0.1">
+  </label>
+  <label>特徴量
+    <select id="featurePreset">
+      <option value="core7">Core 7（推奨）</option>
+      <option value="core10">Core 10</option>
+      <option value="expanded">Expanded 13</option>
+    </select>
+  </label>
+</div>
+<div class="warnbox">
+  <b>重要:</b> Prefix 200Rでは200R以内に決着した試合は学習対象外。Full / Tail除外は終盤情報の影響を調べる診断用です。学習されるのは「決着戦における勝者予測」であり、DRAWの真の勝率・実力差の校正済み確率ではありません。Promotionには検証なしで直結しないでください。
+</div>
+</section>
+
+<section class="card">
+<h2>2. 元Round CSVを読み込む</h2>
+<div id="drop" class="drop">
+  <b>CSVをまとめてここへドラッグ＆ドロップ</b><br>
+  <span class="note">複数ファイル可。ファイル内容は外部へ送信しません。このHTMLを開いているブラウザ内だけで解析します。</span><br><br>
+  <input id="files" type="file" accept=".csv,text/csv" multiple>
+</div>
+<div class="progress"><div id="loadBar"></div></div>
+<div id="loadStatus" class="status" style="margin-top:9px">未読込</div>
+<div class="controls" style="margin-top:12px;align-items:center">
+  <label class="check"><input type="checkbox" id="useCache" checked> IndexedDBでCheckpointをキャッシュ</label>
+  <button id="clearCache">キャッシュを消去</button>
+  <span id="cacheStatus" class="note">未確認</span>
+</div>
+<div class="controls" style="margin-top:10px;align-items:center">
+  <label class="check">Compact Dataset JSON を再読込 <input id="compactInput" type="file" accept=".json,application/json"></label>
+  <span class="note">CSVを再解析せずチェックポイントから復元（同じJSONを重複で投入しないこと）</span>
+</div>
+<div id="runEditors"></div>
+<div class="actions" style="margin-top:10px">
+  <button id="analyze" disabled>学習・Cross Validationを実行</button>
+  <button id="clear">全クリア</button>
+</div>
+</section>
+
+<div class="tabs">
+  <button class="active" data-tab="compare">Horizon比較</button>
+  <button data-tab="model">選択モデル</button>
+  <button data-tab="draws">DRAW評価</button>
+  <button data-tab="oof">決着戦OOF</button>
+  <button data-tab="export">Export</button>
+</div>
+
+<section id="compare" class="tab active">
+  <div class="card">
+    <h2>途中何Roundで勝者を読めるか</h2>
+    <div id="summaryKpis" class="kpis"></div>
+    <div class="scroll" style="margin-top:12px">
+      <table>
+        <thead><tr>
+          <th>Window</th><th>決着N</th><th>Seed数</th><th>Seed CV AUC</th><th>Seed CV Bal.Acc.</th><th>Run外CV AUC</th><th>Run外CV Bal.Acc.</th><th>Seed CV LogLoss</th><th>Seed CV Brier</th>
+        </tr></thead>
+        <tbody id="horizonTable"></tbody>
+      </table>
+    </div>
+    <h3>Seed CV AUC / Run外CV AUC</h3>
+    <p class="note">Run外CV = Leave-One-Run-Out。全Runが同じレベル構成・乱数条件とは限らないため、両方を確認。CV内の訓練と評価は厳密に分離します。</p>
+    <canvas id="horizonCanvas" width="1200" height="360"></canvas>
+    <p class="note">Fullは終盤リークの参考値。Prefix間のCV優劣は「対象になった試合集合」が違う点にも注意。Tail−Nは「死亡直前N roundを隠す」ストレステストです。</p>
+    <h3>Run外CVをRun単位で確認</h3>
+    <div class="scroll"><table><thead><tr><th>Window</th><th>Test Run</th><th>決着N</th><th>AUC</th><th>Balanced Acc.</th><th>LogLoss</th></tr></thead><tbody id="loroRunTable"></tbody></table></div>
+  </div>
+</section>
+
+<section id="model" class="tab">
+  <div class="card">
+    <h2>選択モデル</h2>
+    <div class="controls">
+      <label>Window<select id="modelWindow"></select></label>
+    </div>
+    <div id="modelKpis" class="kpis" style="margin-top:10px"></div>
+    <h3>標準化係数（正ならA有利）</h3>
+    <div class="scroll">
+      <table><thead><tr><th>Feature</th><th>方向化</th><th>係数</th><th>|係数|順位</th></tr></thead><tbody id="coefTable"></tbody></table>
+    </div>
+    <div id="modelNote" class="status" style="margin-top:10px">—</div>
+    <p class="note">係数は学習時の標準化後・向き補正済み差分に対する係数。係数の大きさは因果効果ではありません。</p>
+  </div>
+</section>
+
+<section id="draws" class="tab">
+  <div class="card">
+    <h2>DRAWの参考内容スコア</h2>
+    <div class="warnbox">「P(A)」は決着試合の結果を学習した判別器の出力です。<b>DRAWでAが本当に勝つ確率、またはAが強い確率としての校正は未検証</b>。0.60などの閾値は可視化用で、Promotion判定にはまだ使わないでください。</div>
+    <div class="controls">
+      <label>Window<select id="drawWindow"></select></label>
+      <label>A優勢しきい値<input id="drawHi" type="number" value="0.60" min="0.5" max="0.99" step="0.01"></label>
+      <label>B優勢しきい値<input id="drawLo" type="number" value="0.40" min="0.01" max="0.5" step="0.01"></label>
+    </div>
+    <h3>Run別</h3>
+    <div class="scroll">
+      <table><thead><tr><th>Run</th><th>Draw n</th><th>平均P(A)</th><th>A内容優勢</th><th>ほぼ互角</th><th>B内容優勢</th></tr></thead><tbody id="drawRunTable"></tbody></table>
+    </div>
+    <h3>各DRAW</h3>
+    <div class="scroll">
+      <table><thead><tr><th>Run</th><th>Match</th><th>Seed</th><th>Rounds</th><th>P(A content win)</th><th>判定</th></tr></thead><tbody id="drawTable"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<section id="oof" class="tab">
+  <div class="card">
+    <h2>決着戦 Out-of-fold 予測</h2>
+    <div class="controls"><label>Window<select id="oofWindow"></select></label></div>
+    <div class="scroll">
+      <table><thead><tr><th>Run</th><th>Match</th><th>Seed</th><th>Winner</th><th>Rounds</th><th>OOF P(A)</th><th>予測</th><th>正誤</th></tr></thead><tbody id="oofTable"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<section id="export" class="tab">
+  <div class="card">
+    <h2>Export</h2>
+    <p>数値だけを書き出します。<b>Compact Dataset JSON</b>は、生CSVを送らずに再解析できる最重要の出力です。PNG出力はありません。</p>
+    <div class="actions">
+      <button id="exportCompact"><b>Compact Dataset JSON（最優先）</b></button>
+      <button id="exportJson">解析JSON</button>
+      <button id="exportHorizon">Horizon比較CSV</button>
+      <button id="exportDraws">DRAW評価CSV</button>
+      <button id="exportOof">決着戦OOF CSV</button>
+      <button id="exportModel">選択モデルJSON</button>
+      <button id="exportAllCsv">全試合Window特徴量CSV</button>
+    </div>
+    <div id="exportStatus" class="status" style="margin-top:10px">—</div>
+    <p class="note">旧CSVのLevel/Styleは入っていません。入力欄に後付けしたレベルは出典が手入力だと明示して保存し、Collectorの真の設定と混同しません。</p>
+  </div>
+</section>
+
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const APP_VERSION='1.0.0';
+const CACHE_VERSION=2;
+let runs=[],runSeq=1,loadedConfig=null,analysis=null,busy=false;
+const waitFrame=()=>new Promise(resolve=>setTimeout(resolve,0));
+function busyMode(on){busy=on;for(const id of ['analyze','clear','clearCache','files','compactInput'])if($(id))$(id).disabled=on;}
+function cacheKey(file,cfg){return ['tetris-prefix',CACHE_VERSION,file.name,file.size,file.lastModified,cfg.horizons.join('_'),cfg.tailExclude].join('|')}
+async function dbOpen(){return new Promise((resolve,reject)=>{
+  if(!('indexedDB' in window)){reject(new Error('IndexedDBなし'));return}
+  const req=indexedDB.open('TetrisContentEvaluator',1);
+  req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('compactRuns'))req.result.createObjectStore('compactRuns',{keyPath:'key'})};
+  req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('IDB open failure'));
+})}
+async function cacheGet(key){const db=await dbOpen();try{return await new Promise((resolve,reject)=>{const tx=db.transaction('compactRuns','readonly'),q=tx.objectStore('compactRuns').get(key);q.onsuccess=()=>resolve(q.result?.data||null);q.onerror=()=>reject(q.error)})}finally{db.close()}}
+async function cachePut(key,data){const db=await dbOpen();try{await new Promise((resolve,reject)=>{const tx=db.transaction('compactRuns','readwrite');tx.objectStore('compactRuns').put({key,data,createdAt:new Date().toISOString()});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('IDB transaction error'))})}finally{db.close()}}
+async function cacheDeleteAll(){const db=await dbOpen();try{await new Promise((resolve,reject)=>{const tx=db.transaction('compactRuns','readwrite');tx.objectStore('compactRuns').clear();tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('IDB transaction error'))})}finally{db.close()}}
+$('clearCache').addEventListener('click',async()=>{if(busy)return;try{await cacheDeleteAll();$('cacheStatus').textContent='キャッシュ消去完了'}catch(e){$('cacheStatus').textContent='利用不可: '+e.message}});
+void dbOpen().then(db=>{db.close();$('cacheStatus').textContent='キャッシュ利用可能'}).catch(e=>{$('cacheStatus').textContent='キャッシュ利用不可（CSV直接解析へ自動切替）: '+e.message});
+
+const METRICS={
+  grossPer100:{label:'Gross /100',dir:1},
+  sentPer100:{label:'Sent /100',dir:1},
+  cancelledPer100:{label:'Cancelled /100',dir:1},
+  clashedPer100:{label:'Clashed /100',dir:1},
+  garbageAppliedPer100:{label:'Garbage applied /100',dir:-1},
+  attackConversion:{label:'Attack conversion',dir:1},
+  avgHeight:{label:'平均 height',dir:-1},
+  p95Height:{label:'P95 height',dir:-1},
+  avgAggregateHeight:{label:'平均 aggregate height',dir:-1},
+  avgHoles:{label:'平均 holes',dir:-1},
+  p95Holes:{label:'P95 holes',dir:-1},
+  avgHoleDepth:{label:'平均 hole depth',dir:-1},
+  avgCovered:{label:'平均 covered',dir:-1},
+  avgDanger:{label:'平均 danger',dir:-1},
+  highDangerRate:{label:'High danger率',dir:-1},
+  criticalDangerRate:{label:'Critical danger率',dir:-1},
+  avgColTransitions:{label:'平均 col transitions',dir:-1},
+  tspinPer100:{label:'T-spin /100',dir:1},
+  tetrisPer100:{label:'Tetris /100',dir:1},
+  b2bRate:{label:'B2B率',dir:1},
+  difficultRate:{label:'Difficult率',dir:1},
+  linesPer100:{label:'Lines /100',dir:1}
+};
+const PRESETS={
+  core7:['sentPer100','attackConversion','avgHeight','avgHoles','avgDanger','tspinPer100','b2bRate'],
+  core10:['sentPer100','attackConversion','avgHeight','p95Height','avgHoles','p95Holes','avgDanger','tspinPer100','b2bRate','garbageAppliedPer100'],
+  expanded:['grossPer100','sentPer100','attackConversion','garbageAppliedPer100','avgHeight','p95Height','avgHoles','p95Holes','avgDanger','avgCovered','avgHoleDepth','tspinPer100','b2bRate']
+};
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
+function bool(v){return v===true||v==='true'||v==='TRUE'||v==='1'||v===1}
+function mean(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:NaN}
+function sd(a){if(a.length<2)return NaN;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1))}
+function quantile(a,q){if(!a.length)return NaN;const b=a.slice().sort((x,y)=>x-y),p=(b.length-1)*q,l=Math.floor(p),h=Math.ceil(p);return l===h?b[l]:b[l]*(h-p)+b[h]*(p-l)}
+function fmt(x,d=3){return Number.isFinite(x)?x.toFixed(d):'—'}
+function pct(x,d=1){return Number.isFinite(x)?(100*x).toFixed(d)+'%':'—'}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
+function stamp(){return new Date().toISOString().replace(/[:.]/g,'-')}
+function safeName(s){return String(s).replace(/[\\/:*?"<>|]+/g,'_').slice(0,80)}
+function csvCell(v){if(v==null)return '';const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function objectsToCsv(rows){if(!rows.length)return '';const keys=[...new Set(rows.flatMap(o=>Object.keys(o)))];return [keys.join(','),...rows.map(o=>keys.map(k=>csvCell(o[k])).join(','))].join('\n')}
+function download(name,text,type='text/plain'){const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function parseHorizons(){return [...new Set($('horizons').value.split(',').map(x=>Math.round(+x)).filter(x=>Number.isFinite(x)&&x>=10))].sort((a,b)=>a-b)}
+function configNow(){return {horizons:parseHorizons(),tailExclude:Math.max(1,Math.round(n($('tailExclude').value)||50)),folds:clamp(Math.round(n($('folds').value)||5),2,10),lambda:Math.max(0,n($('lambda').value)),preset:$('featurePreset').value}}
+function windowDefs(cfg){return cfg.horizons.map(h=>({id:'p'+h,label:`Prefix ${h}R`,type:'prefix',limit:h})).concat([{id:'tail'+cfg.tailExclude,label:`Tail −${cfg.tailExclude}R`,type:'tail',tail:cfg.tailExclude},{id:'full',label:'Full（リーク参考）',type:'full'}])}
+
+function parseCsvLine(line){
+  const out=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(q){if(c==='"'&&line[i+1]==='"'){cur+='"';i++}else if(c==='"')q=false;else cur+=c}
+    else{if(c===','){out.push(cur);cur=''}else if(c==='"')q=true;else cur+=c}
+  }
+  out.push(cur);return out;
+}
+async function streamLines(file,onLine,onProgress){
+  const reader=file.stream().getReader(),dec=new TextDecoder();let buf='',read=0;
+  try{while(true){
+    const {value,done}=await reader.read();if(done)break;
+    read+=value.byteLength;buf+=dec.decode(value,{stream:true});
+    let p;
+    while((p=buf.indexOf('\n'))>=0){
+      let line=buf.slice(0,p);buf=buf.slice(p+1);if(line.endsWith('\r'))line=line.slice(0,-1);if(line)onLine(line);
+    }
+    onProgress(read/file.size);
+    await waitFrame();
+  }
+  buf+=dec.decode();if(buf.trim())onLine(buf.replace(/\r$/,''));onProgress(1);
+  }finally{reader.releaseLock()}
+}
+
+function newAgg(){return {
+  pieces:0,gross:0,sent:0,cancelled:0,clashed:0,garbageApplied:0,lines:0,tspins:0,tetrises:0,b2b:0,difficult:0,
+  sumHeight:0,sumHoles:0,sumAggregate:0,sumHoleDepth:0,sumCovered:0,sumDanger:0,sumColT:0,highDanger:0,criticalDanger:0,
+  heightHist:Object.create(null),holesHist:Object.create(null)
+}}
+function histAdd(h,v){const k=String(v);h[k]=(h[k]||0)+1}
+function histValueAt(h,idx){
+  let c=0;const keys=Object.keys(h).map(Number).sort((a,b)=>a-b);
+  for(const k of keys){c+=h[String(k)]||0;if(c>idx)return k}
+  return keys.length?keys[keys.length-1]:NaN;
+}
+function histQuantile(h,count,q){
+  if(!count)return NaN;const p=(count-1)*q,l=Math.floor(p),hi=Math.ceil(p),a=histValueAt(h,l),b=histValueAt(h,hi);
+  return l===hi?a:a*(hi-p)+b*(p-l);
+}
+function addAgg(a,r){
+  a.pieces++;a.gross+=r.gross;a.sent+=r.sent;a.cancelled+=r.cancelled;a.clashed+=r.clashed;a.garbageApplied+=r.garbageApplied;a.lines+=r.lines;
+  if(r.tspin&&r.tspin!=='none')a.tspins++;if(r.lines===4)a.tetrises++;if(r.b2b)a.b2b++;if(r.difficult)a.difficult++;
+  a.sumHeight+=r.maxHeight;a.sumHoles+=r.holes;a.sumAggregate+=r.aggregateHeight;a.sumHoleDepth+=r.holeDepth;a.sumCovered+=r.covered;a.sumDanger+=r.danger;a.sumColT+=r.colTransitions;
+  if(r.danger>=.5)a.highDanger++;if(r.danger>=.75)a.criticalDanger++;histAdd(a.heightHist,r.maxHeight);histAdd(a.holesHist,r.holes);
+}
+function finalizeAgg(a){
+  if(!a||!a.pieces)return null;const p=a.pieces,per100=x=>100*x/p;
+  return {
+    pieces:p,grossPer100:per100(a.gross),sentPer100:per100(a.sent),cancelledPer100:per100(a.cancelled),clashedPer100:per100(a.clashed),
+    garbageAppliedPer100:per100(a.garbageApplied),attackConversion:a.gross?a.sent/a.gross:0,
+    avgHeight:a.sumHeight/p,p95Height:histQuantile(a.heightHist,p,.95),avgAggregateHeight:a.sumAggregate/p,
+    avgHoles:a.sumHoles/p,p95Holes:histQuantile(a.holesHist,p,.95),avgHoleDepth:a.sumHoleDepth/p,avgCovered:a.sumCovered/p,
+    avgDanger:a.sumDanger/p,highDangerRate:a.highDanger/p,criticalDangerRate:a.criticalDanger/p,
+    avgColTransitions:a.sumColT/p,tspinPer100:per100(a.tspins),tetrisPer100:per100(a.tetrises),b2bRate:a.b2b/p,difficultRate:a.difficult/p,linesPer100:per100(a.lines)
+  };
+}
+
+async function loadFile(file,fileNo,totalFiles,cfg){
+  const defs=windowDefs(cfg),run={id:'',fileName:file.name,label:file.name.replace(/\.csv$/i,''),include:true,levelA:'',levelB:'',styleA:'',styleB:'',metaOrigin:'unknown',matches:new Map(),rows:0,warnings:[]};
+  let header=null,idx={};
+  const needed=['matchIndex','seed','winner','matchRounds','t','side','lines','tspin','difficult','gross','cancelled','clashed','sent','garbageApplied','b2b','aggregateHeight','maxHeight','holes','holeDepth','covered','colTransitions','danger'];
+  await streamLines(file,line=>{
+    const cells=parseCsvLine(line);
+    if(!header){
+      header=cells.map(x=>x.trim().replace(/^﻿/,''));header.forEach((h,i)=>idx[h]=i);
+      const missing=needed.filter(k=>idx[k]==null);if(missing.length)throw new Error(`${file.name}: 必須列不足 ${missing.join(', ')}`);
+      return;
+    }
+    const g=k=>(idx[k]!=null?cells[idx[k]]:'')??'';
+    const mi=n(g('matchIndex'));
+    if(!Number.isInteger(mi)||mi<0)throw new Error(`matchIndex不正: ${g('matchIndex')}`);
+    const t=n(g('t')),side=g('side');
+    if(side!=='A'&&side!=='B')throw new Error(`side不正: ${side}`);
+    if(!Number.isInteger(t)||t<1)throw new Error(`round不正: ${g('t')}`);
+    let m=run.matches.get(mi);
+    if(!m){
+      const rounds=n(g('matchRounds'));
+      m={runId:run.id,matchIndex:mi,seed:String(g('seed')),winner:g('winner')||'DRAW',rounds,windows:{},countA:0,countB:0,lastA:0,lastB:0};
+      for(const d of defs)m.windows[d.id]={A:newAgg(),B:newAgg()};
+      run.matches.set(mi,m);
+    }
+    if(m.seed!==String(g('seed'))||m.rounds!==n(g('matchRounds'))||m.winner!==(g('winner')||'DRAW'))throw new Error(`match ${mi}: 行ごとのseed/winner/roundsが不一致`);
+    if(t>m.rounds)throw new Error(`match ${mi}: round ${t} > matchRounds ${m.rounds}`);
+    // Strict monotone per side: duplicate/missing/out-of-order rows are rejected.
+    if(side==='A'){
+      if(t!==m.lastA+1)throw new Error(`match ${mi} A: expected round ${m.lastA+1}, got ${t}`);
+      m.lastA=t;m.countA++;
+    }else{
+      if(t!==m.lastB+1)throw new Error(`match ${mi} B: expected round ${m.lastB+1}, got ${t}`);
+      m.lastB=t;m.countB++;
+    }
+    const row={lines:n(g('lines')),tspin:g('tspin'),difficult:bool(g('difficult')),gross:n(g('gross')),cancelled:n(g('cancelled')),clashed:n(g('clashed')),
+      sent:n(g('sent')),garbageApplied:n(g('garbageApplied')),b2b:bool(g('b2b')),aggregateHeight:n(g('aggregateHeight')),maxHeight:n(g('maxHeight')),holes:n(g('holes')),
+      holeDepth:n(g('holeDepth')),covered:n(g('covered')),colTransitions:n(g('colTransitions')),danger:n(g('danger'))};
+    for(const d of defs){
+      let take=false;
+      if(d.type==='full')take=true;
+      else if(d.type==='prefix')take=t<=d.limit;
+      else if(d.type==='tail')take=t<=Math.max(0,m.rounds-d.tail);
+      if(take)addAgg(m.windows[d.id][side],row);
+    }
+    run.rows++;
+    if(idx.levelA!=null&&g('levelA')){run.levelA=g('levelA');run.metaOrigin='csv'}
+    if(idx.levelB!=null&&g('levelB')){run.levelB=g('levelB');run.metaOrigin='csv'}
+    if(idx.styleA!=null&&g('styleA')){run.styleA=g('styleA');run.metaOrigin='csv'}
+    if(idx.styleB!=null&&g('styleB')){run.styleB=g('styleB');run.metaOrigin='csv'}
+  },p=>{
+    $('loadBar').style.width=((fileNo+p)/totalFiles*100)+'%';
+    $('loadStatus').textContent=`読込中 ${fileNo+1}/${totalFiles}: ${file.name}\n${(100*p).toFixed(1)}%`;
+  });
+  run.matchList=[...run.matches.values()].sort((a,b)=>a.matchIndex-b.matchIndex);
+  for(const m of run.matchList){
+    if(m.countA!==m.rounds||m.countB!==m.rounds)run.warnings.push(`match #${m.matchIndex}: A=${m.countA}/B=${m.countB} / expected ${m.rounds}`);
+  }
+  if(run.warnings.length){run.warnings=run.warnings.slice(0,20);}
+  for(const m of run.matchList)for(const d of defs){
+    const w=m.windows[d.id];w.Am=finalizeAgg(w.A);w.Bm=finalizeAgg(w.B);delete w.A;delete w.B;
+  }
+  delete run.matches;
+  return run;
+}
+
+async function loadFiles(files){
+  if(!files.length||busy)return;
+  if(runs.length&&!confirm('既存データに追加しますか？'))return;
+  const cfg=configNow();if(!cfg.horizons.length){alert('Prefix horizonsを指定してください');return}
+  if(loadedConfig&&(JSON.stringify(cfg.horizons)!==JSON.stringify(loadedConfig.horizons)||cfg.tailExclude!==loadedConfig.tailExclude)){
+    alert('checkpoint設定が以前と異なります。全クリアしてから読み込んでください。');return;
+  }
+  const seen=new Set(runs.map(r=>r.fileKey));loadedConfig=loadedConfig||cfg;
+  $('horizons').disabled=true;$('tailExclude').disabled=true;busyMode(true);$('loadBar').style.width='0%';analysis=null;clearOutputs();
+  let ok=0,skip=0,err=[];
+  try{
+    for(let i=0;i<files.length;i++){
+      const f=files[i],key=cacheKey(f,loadedConfig);
+      if(seen.has(key)){skip++;continue}seen.add(key);
+      try{
+        let r=null,cached=false;
+        if($('useCache').checked){try{r=await cacheGet(key);cached=!!r}catch(e){$('cacheStatus').textContent='キャッシュ読込不可: '+e.message}}
+        if(!r)r=await loadFile(f,i,files.length,loadedConfig);
+        r.id='r'+runSeq++;r.fileKey=key;
+        for(const m of r.matchList)m.runId=r.id;
+        if(!cached&&$('useCache').checked){try{await cachePut(key,r)}catch(e){$('cacheStatus').textContent='キャッシュ保存不可: '+e.message}}
+        runs.push(r);ok++;
+        $('loadStatus').textContent=`${i+1}/${files.length}: ${f.name} ${cached?'(IndexedDB cache)':'(stream parsed)'}; matches=${r.matchList.length}, rows=${r.rows.toLocaleString()}${r.warnings?.length?'\n警告: '+r.warnings.join('; '):''}`;
+      }catch(e){err.push(`${f.name}: ${e.message}`);$('loadStatus').textContent=`読み込みエラー ${err.length}: ${e.stack||e}`}
+      await waitFrame();
+    }
+    $('loadStatus').textContent=`完了 ${runs.length} Runs / ${runs.reduce((a,r)=>a+r.matchList.length,0)} matches / ${runs.reduce((a,r)=>a+r.rows,0).toLocaleString()} rows\n今回: 新規${ok} / 重複スキップ${skip} / エラー${err.length}${err.length?'\n'+err.join('\n'):''}\n元Round行は保持していません。メタ情報がない場合は空欄（不明）です。`;
+    renderRunEditors();$('analyze').disabled=!runs.length;
+  }finally{busyMode(false);$('analyze').disabled=!runs.length}
+}
+$('files').addEventListener('change',e=>loadFiles([...e.target.files]));
+$('drop').addEventListener('dragover',e=>{e.preventDefault();$('drop').classList.add('drag')});
+$('drop').addEventListener('dragleave',()=>$('drop').classList.remove('drag'));
+$('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('drag');loadFiles([...e.dataTransfer.files].filter(f=>/\.csv$/i.test(f.name)))});
+
+$('compactInput').addEventListener('change',async e=>{
+  if(busy||!e.target.files.length)return;
+  const file=e.target.files[0];busyMode(true);
+  try{
+    const obj=JSON.parse(await file.text());
+    if(obj.kind!=='tetris-content-checkpoint-dataset'||obj.schema!==2)throw new Error('Compact JSONの形式が異なります');
+    if(!Array.isArray(obj.runs)||!Array.isArray(obj.checkpoints))throw new Error('runs/checkpoints がありません');
+    const defs=obj.checkpoints,prefix=defs.filter(d=>d.type==='prefix').map(d=>d.limit),tail=defs.find(d=>d.type==='tail')?.tail;
+    if(!prefix.length||!tail)throw new Error('Checkpoint定義が不正');
+    if(runs.length){
+      if(JSON.stringify(loadedConfig.horizons)!==JSON.stringify(prefix)||loadedConfig.tailExclude!==tail)throw new Error('既存読込とのCheckpoint設定が異なります');
+      if(!confirm('既存データにCompact JSONを追加しますか？ 重複投入に注意してください。'))return;
+    }else{
+      loadedConfig={...configNow(),horizons:prefix,tailExclude:tail};
+      $('horizons').value=prefix.join(',');$('tailExclude').value=tail;
+      $('horizons').disabled=true;$('tailExclude').disabled=true;
+    }
+    for(const v of obj.runs){
+      if(!Array.isArray(v.matches))throw new Error('matches配列がありません');
+      const r={id:'r'+runSeq++,fileName:v.fileName||file.name,label:v.label||file.name,include:v.include!==false,
+        levelA:v.levelA||'',levelB:v.levelB||'',styleA:v.styleA||'',styleB:v.styleB||'',metaOrigin:v.metaOrigin||'unknown',rows:v.rows||0,
+        warnings:v.warnings||[],fileKey:'compact|'+file.name+'|'+(v.id||runSeq),matchList:[]};
+      for(const m of v.matches){
+        const windows={};
+        for(const [k,w] of Object.entries(m.windows||{}))windows[k]={Am:w.A||null,Bm:w.B||null};
+        r.matchList.push({runId:r.id,matchIndex:m.matchIndex,seed:String(m.seed),winner:m.winner,rounds:m.rounds,
+          countA:m.observedRowsA,countB:m.observedRowsB,windows});
+      }
+      runs.push(r);
+    }
+    analysis=null;clearOutputs();renderRunEditors();$('analyze').disabled=!runs.length;
+    $('loadStatus').textContent=`Compact dataset読込成功: ${runs.length} Runs / ${runs.reduce((a,r)=>a+r.matchList.length,0)} matches。元CSVは不要です。`;
+  }catch(err){$('loadStatus').textContent='Compact JSON読込エラー: '+err.message}
+  finally{busyMode(false);$('analyze').disabled=!runs.length;$('compactInput').value=''}
+});
+function renderRunEditors(){
+  $('runEditors').innerHTML=runs.map(r=>`<div class="runrow">
+    <input type="checkbox" data-run="${r.id}" data-f="include" ${r.include?'checked':''}>
+    <input type="text" data-run="${r.id}" data-f="label" value="${esc(r.label)}">
+    <input type="number" data-run="${r.id}" data-f="levelA" min="1" max="9" placeholder="LvA" value="${esc(r.levelA)}">
+    <input type="number" data-run="${r.id}" data-f="levelB" min="1" max="9" placeholder="LvB" value="${esc(r.levelB)}">
+    <div class="meta">${r.matchList.length} matches / ${r.rows.toLocaleString()} rows / ${esc(r.fileName)}<br>${r.metaOrigin==='csv'?'CSV設定':'Levelラベル未確認（後付け）'}</div>
+  </div>`).join('');
+  $('runEditors').querySelectorAll('[data-run]').forEach(el=>el.addEventListener('change',()=>{
+    const r=runs.find(x=>x.id===el.dataset.run),f=el.dataset.f;if(!r)return;
+    r[f]=f==='include'?el.checked:el.value;
+    if((f==='levelA'||f==='levelB')&&r.metaOrigin!=='csv')r.metaOrigin='manual-unverified';
+    analysis=null;clearOutputs();
+  }));
+}
+
+function clearOutputs(){
+  $('horizonTable').innerHTML='';$('loroRunTable').innerHTML='';$('summaryKpis').innerHTML='';$('coefTable').innerHTML='';$('drawRunTable').innerHTML='';$('drawTable').innerHTML='';$('oofTable').innerHTML='';
+  for(const s of [$('modelWindow'),$('drawWindow'),$('oofWindow')])s.innerHTML='';
+  const c=$('horizonCanvas').getContext('2d');c.clearRect(0,0,$('horizonCanvas').width,$('horizonCanvas').height);
+}
+$('clear').addEventListener('click',()=>{runs=[];runSeq=1;loadedConfig=null;analysis=null;$('files').value='';$('horizons').disabled=false;$('tailExclude').disabled=false;$('runEditors').innerHTML='';$('loadStatus').textContent='未読込';$('loadBar').style.width='0%';$('analyze').disabled=true;clearOutputs()});
+
+function featureVector(m,windowId,keys){
+  const w=m.windows[windowId];if(!w||!w.Am||!w.Bm)return null;
+  if(w.Am.pieces!==w.Bm.pieces)return null;
+  if(windowId.startsWith('p')&&w.Am.pieces!==Number(windowId.slice(1)))return null;
+  const x=[];
+  for(const k of keys){
+    const met=METRICS[k],a=w.Am[k],b=w.Bm[k];if(!Number.isFinite(a)||!Number.isFinite(b))return null;
+    x.push(met.dir*(a-b)); // positive = A better
+  }
+  return x;
+}
+function eligibleForWindow(m,d){
+  if(d.type==='prefix')return m.rounds>d.limit; // 結末前だけ
+  if(d.type==='tail')return m.rounds>d.tail+5;
+  return true;
+}
+function buildSamples(d,keys){
+  const samples=[],draws=[];
+  for(const r of runs.filter(x=>x.include))for(const m of r.matchList){
+    if(!eligibleForWindow(m,d))continue;
+    const x=featureVector(m,d.id,keys);if(!x)continue;
+    const base={runId:r.id,run:r.label,matchIndex:m.matchIndex,seed:m.seed,rounds:m.rounds,x};
+    if(m.winner==='A'||m.winner==='B')samples.push({...base,y:m.winner==='A'?1:0,winner:m.winner});
+    else draws.push({...base,winner:'DRAW'});
+  }
+  return {samples,draws};
+}
+function hash32(s){
+  s=String(s);let h=2166136261>>>0;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}
+  h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);h^=h>>>16;return h>>>0;
+}
+function foldMap(samples,k){
+  const seeds=[...new Set(samples.map(s=>s.seed))].sort((a,b)=>hash32(a)-hash32(b));
+  const map=new Map();seeds.forEach((s,i)=>map.set(s,i%k));return {map,seeds};
+}
+function standardizer(rows,p){
+  // Training is augmented with x and -x, so the symmetric training mean is exactly 0.
+  // Scale is learned from the training fold only; no test-fold leakage.
+  const mu=Array(p).fill(0),sig=Array(p).fill(1);
+  for(let j=0;j<p;j++){let v=0;for(const r of rows)v+=r.x[j]*r.x[j];sig[j]=Math.sqrt(v/Math.max(1,rows.length))||1}
+  return {mu,sig};
+}
+function zrow(x,st){return x.map((v,j)=>v/st.sig[j])}
+function sigmoid(z){if(z>=0){const e=Math.exp(-z);return 1/(1+e)}const e=Math.exp(z);return e/(1+e)}
+function solveLinear(A,b){
+  const n=A.length,M=A.map((r,i)=>r.slice().concat([b[i]]));
+  for(let c=0;c<n;c++){
+    let piv=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[piv][c]))piv=r;
+    if(Math.abs(M[piv][c])<1e-10)M[piv][c]+=1e-6;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    const d=M[c][c];for(let j=c;j<=n;j++)M[c][j]/=d;
+    for(let r=0;r<n;r++)if(r!==c){const f=M[r][c];if(!f)continue;for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j]}
+  }
+  return M.map(r=>r[n]);
+}
+function fitLogistic(rawRows,lambda){
+  if(!rawRows.length)throw new Error('学習データなし');
+  const p=rawRows[0].x.length,st=standardizer(rawRows,p);
+  // A/B向き偏りを学習しないよう、訓練データだけ鏡像拡張。
+  const rows=[];
+  for(const r of rawRows){
+    const z=zrow(r.x,st);rows.push({x:z,y:r.y});rows.push({x:z.map(v=>-v),y:1-r.y});
+  }
+  let w=Array(p+1).fill(0);
+  for(let iter=0;iter<35;iter++){
+    const H=Array.from({length:p+1},()=>Array(p+1).fill(0)),g=Array(p+1).fill(0);
+    for(const r of rows){
+      const xx=[1,...r.x];let z=0;for(let j=0;j<=p;j++)z+=w[j]*xx[j];
+      const pr=sigmoid(z),v=Math.max(1e-6,pr*(1-pr)),err=r.y-pr;
+      for(let j=0;j<=p;j++){g[j]+=xx[j]*err;for(let k=0;k<=p;k++)H[j][k]+=v*xx[j]*xx[k]}
+    }
+    for(let j=1;j<=p;j++){g[j]-=lambda*w[j];H[j][j]+=lambda}
+    H[0][0]+=1e-8;
+    const d=solveLinear(H,g);let md=0;for(let j=0;j<=p;j++){w[j]+=d[j];md=Math.max(md,Math.abs(d[j]))}
+    if(md<1e-7)break;
+  }
+  return {w,st,predict(x){const z=zrow(x,st);let s=w[0];for(let j=0;j<p;j++)s+=w[j+1]*z[j];return sigmoid(s)}};
+}
+function ranks(a){
+  const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]),r=Array(a.length);let i=0;
+  while(i<idx.length){let j=i+1;while(j<idx.length&&idx[j][0]===idx[i][0])j++;const rr=(i+j+1)/2;for(let k=i;k<j;k++)r[idx[k][1]]=rr;i=j}
+  return r;
+}
+function aucFrom(y,p){
+  let n1=0,n0=0;for(const v of y)v?n1++:n0++;if(!n1||!n0)return NaN;
+  const rr=ranks(p),sum1=y.reduce((s,v,i)=>s+(v?rr[i]:0),0),U=sum1-n1*(n1+1)/2;return U/(n1*n0);
+}
+function metricsFrom(y,p){
+  if(!y.length)return {n:0,auc:NaN,bal:NaN,acc:NaN,logloss:NaN,brier:NaN};
+  let tp=0,tn=0,fp=0,fn=0,ll=0,br=0;
+  for(let i=0;i<y.length;i++){
+    const q=clamp(p[i],1e-9,1-1e-9),pred=q>=.5?1:0;
+    if(y[i]&&pred)tp++;else if(y[i]&&!pred)fn++;else if(!y[i]&&pred)fp++;else tn++;
+    ll+=-(y[i]*Math.log(q)+(1-y[i])*Math.log(1-q));br+=(q-y[i])**2;
+  }
+  const tpr=tp/(tp+fn||1),tnr=tn/(tn+fp||1);
+  return {n:y.length,auc:aucFrom(y,p),bal:(tpr+tnr)/2,acc:(tp+tn)/y.length,logloss:ll/y.length,brier:br/y.length,tp,tn,fp,fn};
+}
+function crossValidate(samples,k,lambda){
+  const {map,seeds}=foldMap(samples,k),oof=[];
+  for(let f=0;f<k;f++){
+    const tr=samples.filter(s=>map.get(s.seed)!==f),te=samples.filter(s=>map.get(s.seed)===f);
+    if(!tr.length||!te.length)continue;
+    const model=fitLogistic(tr,lambda);
+    for(const s of te)oof.push({...s,p:model.predict(s.x),fold:f+1});
+  }
+  oof.sort((a,b)=>a.run.localeCompare(b.run)||a.matchIndex-b.matchIndex);
+  return {oof,metrics:metricsFrom(oof.map(x=>x.y),oof.map(x=>x.p)),seedCount:seeds.length};
+}
+
+function leaveOneRunOut(samples,lambda){
+  const ids=[...new Set(samples.map(s=>s.runId))];
+  if(ids.length<2)return {oof:[],metrics:metricsFrom([],[]),runs:[],reason:'2 Run以上必要'};
+  const out=[],stats=[];
+  for(const id of ids){
+    const train=samples.filter(s=>s.runId!==id),test=samples.filter(s=>s.runId===id);
+    if(!train.length||!test.length)continue;
+    const model=fitLogistic(train,lambda),pred=test.map(s=>({...s,p:model.predict(s.x),fold:'run:'+id}));
+    out.push(...pred);
+    const m=metricsFrom(pred.map(x=>x.y),pred.map(x=>x.p));
+    stats.push({run:id,runName:test[0].run,...m});
+  }
+  return {oof:out,metrics:metricsFrom(out.map(x=>x.y),out.map(x=>x.p)),runs:stats};
+}
+
+async function analyze(){
+  if(!runs.length)return;
+  const cfg={...loadedConfig,...configNow()};
+  const keys=PRESETS[cfg.preset];if(!keys)throw new Error('特徴量プリセット不明');
+  const defs=windowDefs(loadedConfig);const windows={};
+  $('loadStatus').textContent+='\\n学習中…';
+  for(let i=0;i<defs.length;i++){
+    const d=defs[i],{samples,draws}=buildSamples(d,keys);
+    if(samples.length<20){windows[d.id]={def:d,samples,draws,error:'決着試合が少なすぎます'};continue}
+    const cv=crossValidate(samples,cfg.folds,cfg.lambda);
+    const loro=leaveOneRunOut(samples,cfg.lambda);
+    const model=fitLogistic(samples,cfg.lambda);
+    const drawScores=draws.map(s=>({...s,p:model.predict(s.x)}));
+    windows[d.id]={def:d,samples,draws:drawScores,cv,loro,model,metrics:cv.metrics,seedCount:cv.seedCount};
+    await new Promise(r=>setTimeout(r,0));
+  }
+  analysis={createdAt:new Date().toISOString(),cfg,keys,windows};
+  $('loadStatus').textContent=$('loadStatus').textContent.replace(/\\n学習中…$/,'')+`\\n解析完了: ${Object.keys(windows).length} windows / features ${keys.length}`;
+  renderAll();
+}
+$('analyze').addEventListener('click',()=>analyze().catch(e=>{$('loadStatus').textContent=`ERROR\\n${e.stack||e}`}));
+
+function windowResultList(){return analysis?Object.values(analysis.windows):[]}
+function renderAll(){
+  renderHorizon();refreshWindowSelectors();renderModel();renderDraws();renderOof();
+}
+function renderHorizon(){
+  const ws=windowResultList();
+  $('horizonTable').innerHTML=ws.map(w=>{
+    if(w.error)return `<tr><td>${esc(w.def.label)}</td><td colspan="8">${esc(w.error)}</td></tr>`;
+    const m=w.metrics,l=w.loro.metrics;
+    return `<tr><td>${esc(w.def.label)}</td><td>${m.n}</td><td>${w.seedCount}</td><td><b>${fmt(m.auc,3)}</b></td><td>${pct(m.bal)}</td><td><b>${fmt(l.auc,3)}</b></td><td>${pct(l.bal)}</td><td>${fmt(m.logloss,3)}</td><td>${fmt(m.brier,3)}</td></tr>`;
+  }).join('');
+  $('loroRunTable').innerHTML=ws.filter(w=>!w.error).flatMap(w=>w.loro.runs.map(r=>`<tr><td>${esc(w.def.label)}</td><td>${esc(r.runName)}</td><td>${r.n}</td><td>${fmt(r.auc)}</td><td>${pct(r.bal)}</td><td>${fmt(r.logloss)}</td></tr>`)).join('')||'<tr><td colspan="6">Run外CVには2つ以上のRunが必要</td></tr>';
+  const prefix=ws.filter(w=>!w.error&&w.def.type==='prefix');
+  const best=prefix.slice().sort((a,b)=>b.metrics.auc-a.metrics.auc)[0];
+  const dec=[...new Set(runs.filter(r=>r.include).flatMap(r=>r.matchList.filter(m=>m.winner!=='DRAW').map(m=>r.id+':'+m.matchIndex)))].length;
+  const dr=runs.filter(r=>r.include).reduce((s,r)=>s+r.matchList.filter(m=>m.winner==='DRAW').length,0);
+  $('summaryKpis').innerHTML=[
+    ['Runs',runs.filter(r=>r.include).length],['Decisive',dec],['Draws',dr],['Features',analysis.keys.length],
+    ['Best prefix',best?best.def.label:'—'],['Best AUC',best?fmt(best.metrics.auc,3):'—']
+  ].map(x=>`<div class="kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+  drawHorizonChart(ws.filter(w=>!w.error));
+}
+function drawHorizonChart(ws){
+  const cv=$('horizonCanvas'),c=cv.getContext('2d'),W=cv.width,H=cv.height,p={l:70,r:25,t:35,b:80};c.clearRect(0,0,W,H);c.fillStyle='#080d15';c.fillRect(0,0,W,H);
+  for(let i=0;i<=5;i++){const y=p.t+(H-p.t-p.b)*i/5;c.strokeStyle='#29344a';c.beginPath();c.moveTo(p.l,y);c.lineTo(W-p.r,y);c.stroke();c.fillStyle='#98a7bc';c.font='11px system-ui';c.fillText((1-i/5).toFixed(1),25,y+4)}
+  const xs=ws.map((_,i)=>p.l+(W-p.l-p.r)*(i+.5)/ws.length);
+  function line(vals,color){
+    c.strokeStyle=color;c.lineWidth=2;c.beginPath();vals.forEach((v,i)=>{const y=p.t+(1-v)*(H-p.t-p.b);i?c.lineTo(xs[i],y):c.moveTo(xs[i],y)});c.stroke();
+    vals.forEach((v,i)=>{const y=p.t+(1-v)*(H-p.t-p.b);c.fillStyle=color;c.beginPath();c.arc(xs[i],y,4,0,Math.PI*2);c.fill()});
+  }
+  line(ws.map(w=>Number.isFinite(w.metrics.auc)?w.metrics.auc:0),'#68c9ff');
+  if(ws.some(w=>Number.isFinite(w.loro.metrics.auc)))line(ws.map(w=>Number.isFinite(w.loro.metrics.auc)?w.loro.metrics.auc:0),'#ff9b78');
+  ws.forEach((w,i)=>{c.save();c.translate(xs[i],H-p.b+10);c.rotate(-.35);c.fillStyle='#98a7bc';c.font='11px system-ui';c.fillText(w.def.label,0,0);c.restore()});
+  c.fillStyle='#68c9ff';c.fillRect(p.l,12,14,3);c.fillStyle='#edf3ff';c.fillText('ROC-AUC',p.l+20,16);
+  c.fillStyle='#ff9b78';c.fillRect(p.l+100,12,14,3);c.fillStyle='#edf3ff';c.fillText('Run外CV AUC',p.l+120,16);
+}
+function refreshWindowSelectors(){
+  const opts=windowResultList().filter(w=>!w.error).map(w=>`<option value="${w.def.id}">${esc(w.def.label)}</option>`).join('');
+  for(const id of ['modelWindow','drawWindow','oofWindow']){
+    const old=$(id).value;$(id).innerHTML=opts;if([...$(id).options].some(o=>o.value===old))$(id).value=old;
+  }
+  // default: best prefix by AUC
+  const best=windowResultList().filter(w=>!w.error&&w.def.type==='prefix').sort((a,b)=>b.metrics.auc-a.metrics.auc)[0];
+  if(best)for(const id of ['modelWindow','drawWindow','oofWindow'])if(!$(id).dataset.touched)$(id).value=best.def.id;
+}
+for(const id of ['modelWindow','drawWindow','oofWindow'])$(id).addEventListener('change',()=>{$(id).dataset.touched='1';if(id==='modelWindow')renderModel();if(id==='drawWindow')renderDraws();if(id==='oofWindow')renderOof()});
+$('drawHi').addEventListener('change',renderDraws);$('drawLo').addEventListener('change',renderDraws);
+
+function getW(id){return analysis?.windows[id]}
+function renderModel(){
+  const w=getW($('modelWindow').value);if(!w||w.error)return;const m=w.metrics;
+  $('modelKpis').innerHTML=[['Seed CV AUC',fmt(m.auc,3)],['Run外CV AUC',fmt(w.loro.metrics.auc,3)],['Balanced Acc.',pct(m.bal)],['Log loss',fmt(m.logloss,3)],['Brier',fmt(m.brier,3)],['n',m.n]]
+    .map(x=>`<div class="kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+  const co=analysis.keys.map((k,i)=>({k,label:METRICS[k].label,coef:w.model.w[i+1]})).sort((a,b)=>Math.abs(b.coef)-Math.abs(a.coef));
+  $('coefTable').innerHTML=co.map((x,i)=>`<tr><td>${esc(x.label)}</td><td>+ = Aが良い</td><td class="${x.coef>=0?'pos':'neg'}">${fmt(x.coef,4)}</td><td>${i+1}</td></tr>`).join('');
+  $('modelNote').textContent=`${w.def.label}\n訓練: 決着試合のみ。CV: seed単位 ${analysis.cfg.folds}-fold ＋ Leave-One-Run-Out。\nA/B向き偏りを消すため訓練側だけ鏡像拡張。Ridge λ=${analysis.cfg.lambda}.\nPrefixはそのround以前に終わった試合を除外。\nDRAW評価確率の校正は未検証。Full / Tailは診断限定。`;
+}
+function renderDraws(){
+  const w=getW($('drawWindow').value);if(!w||w.error)return;
+  const hi=n($('drawHi').value)||.6,lo=n($('drawLo').value)||.4,by=new Map();
+  for(const d of w.draws){
+    if(!by.has(d.run))by.set(d.run,[]);by.get(d.run).push(d);
+  }
+  $('drawRunTable').innerHTML=[...by.entries()].map(([run,a])=>{
+    const A=a.filter(x=>x.p>=hi).length,B=a.filter(x=>x.p<=lo).length,N=a.length-A-B;
+    return `<tr><td>${esc(run)}</td><td>${a.length}</td><td>${pct(mean(a.map(x=>x.p)))}</td><td>${A}</td><td>${N}</td><td>${B}</td></tr>`;
+  }).join('')||'<tr><td colspan="6">このwindowで評価可能なDRAWなし</td></tr>';
+  $('drawTable').innerHTML=w.draws.slice().sort((a,b)=>Math.abs(b.p-.5)-Math.abs(a.p-.5)).map(d=>{
+    const judge=d.p>=hi?'A内容優勢':d.p<=lo?'B内容優勢':'ほぼ互角',cl=d.p>=hi?'pos':d.p<=lo?'neg':'neutral';
+    return `<tr><td>${esc(d.run)}</td><td>${d.matchIndex}</td><td>${esc(d.seed)}</td><td>${d.rounds}</td><td class="${cl}"><b>${pct(d.p,1)}</b></td><td>${judge}</td></tr>`;
+  }).join('');
+}
+function renderOof(){
+  const w=getW($('oofWindow').value);if(!w||w.error)return;
+  $('oofTable').innerHTML=w.cv.oof.slice().sort((a,b)=>Math.abs(b.p-.5)-Math.abs(a.p-.5)).map(x=>{
+    const pred=x.p>=.5?'A':'B',ok=pred===x.winner;
+    return `<tr><td>${esc(x.run)}</td><td>${x.matchIndex}</td><td>${esc(x.seed)}</td><td>${x.winner}</td><td>${x.rounds}</td><td>${pct(x.p,1)}</td><td>${pred}</td><td class="${ok?'pos':'neg'}">${ok?'○':'×'}</td></tr>`;
+  }).join('');
+}
+
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));
+}));
+
+function horizonRows(){
+  return windowResultList().filter(w=>!w.error).map(w=>({window:w.def.label,type:w.def.type,n:w.metrics.n,seeds:w.seedCount,seed_auc:w.metrics.auc,seed_balanced_accuracy:w.metrics.bal,seed_logloss:w.metrics.logloss,seed_brier:w.metrics.brier,run_out_auc:w.loro.metrics.auc,run_out_balanced_accuracy:w.loro.metrics.bal,run_out_logloss:w.loro.metrics.logloss,run_out_brier:w.loro.metrics.brier}));
+}
+function drawExportRows(){
+  const w=getW($('drawWindow').value);if(!w||w.error)return [];
+  return w.draws.map(x=>({window:w.def.label,run:x.run,matchIndex:x.matchIndex,seed:x.seed,rounds:x.rounds,p_A_content_win:x.p,p_B_content_win:1-x.p}));
+}
+function oofExportRows(){
+  const w=getW($('oofWindow').value);if(!w||w.error)return [];
+  return w.cv.oof.map(x=>({window:w.def.label,run:x.run,matchIndex:x.matchIndex,seed:x.seed,winner:x.winner,rounds:x.rounds,fold:x.fold,p_A:x.p,p_B:1-x.p,prediction:x.p>=.5?'A':'B',correct:(x.p>=.5?'A':'B')===x.winner}));
+}
+// Portable checkpoint dataset: one object per match, no round rows, no guesswork on Level labels.
+function compactDataset(){
+  if(!runs.length)throw new Error('読み込みデータがありません');
+  return {schema:2,kind:'tetris-content-checkpoint-dataset',appVersion:APP_VERSION,
+    createdAt:new Date().toISOString(),checkpoints:windowDefs(loadedConfig),
+    provenance:'CSVのlevel/style列がない場合、レベル欄は手入力・未確認。ラベルはモデル教師として未使用。',
+    runs:runs.map(r=>({id:r.id,label:r.label,fileName:r.fileName,levelA:r.levelA,levelB:r.levelB,styleA:r.styleA,styleB:r.styleB,metaOrigin:r.metaOrigin,include:r.include,rows:r.rows,warnings:r.warnings||[],
+      matches:r.matchList.map(m=>({matchIndex:m.matchIndex,seed:m.seed,winner:m.winner,rounds:m.rounds,observedRowsA:m.countA,observedRowsB:m.countB,
+        windows:Object.fromEntries(Object.entries(m.windows).map(([k,v])=>[k,{A:v.Am,B:v.Bm}]))}))}))};
+}
+function compactCsv(){
+  const rows=[];
+  for(const r of runs)for(const m of r.matchList){
+    const x={run:r.label,sourceFile:r.fileName,levelA:r.levelA,levelB:r.levelB,levelOrigin:r.metaOrigin,matchIndex:m.matchIndex,seed:m.seed,winner:m.winner,rounds:m.rounds};
+    for(const [k,w] of Object.entries(m.windows))for(const side of ['A','B'])if(w[side+'m'])for(const [metric,value] of Object.entries(w[side+'m'])){
+      x[`${k}_${side}_${metric}`]=value;
+    }
+    rows.push(x);
+  }
+  return objectsToCsv(rows);
+}
+$('exportCompact').addEventListener('click',()=>{try{download(`tetris_content_compact_${stamp()}.json`,JSON.stringify(compactDataset()),'application/json');$('exportStatus').textContent='Compact Dataset JSON を出力しました。元Round CSVは不要です。'}catch(e){$('exportStatus').textContent=e.message}});
+$('exportAllCsv').addEventListener('click',()=>{if(!runs.length)return;download(`tetris_content_features_${stamp()}.csv`,compactCsv(),'text/csv;charset=utf-8');$('exportStatus').textContent='全試合Window特徴量CSVを出力しました。'});
+$('exportHorizon').addEventListener('click',()=>{download(`tetris_early_horizon_${stamp()}.csv`,objectsToCsv(horizonRows()),'text/csv');$('exportStatus').textContent='Horizon比較CSVを出力しました。'});
+$('exportDraws').addEventListener('click',()=>{download(`tetris_draw_content_scores_${stamp()}.csv`,objectsToCsv(drawExportRows()),'text/csv');$('exportStatus').textContent='DRAW評価CSVを出力しました。'});
+$('exportOof').addEventListener('click',()=>{download(`tetris_decisive_oof_${stamp()}.csv`,objectsToCsv(oofExportRows()),'text/csv');$('exportStatus').textContent='決着戦OOF CSVを出力しました。'});
+$('exportModel').addEventListener('click',()=>{
+  const w=getW($('modelWindow').value);if(!w||w.error)return;
+  const payload={schema:2,kind:'tetris-content-evaluator-model',createdAt:new Date().toISOString(),appVersion:APP_VERSION,window:w.def,features:analysis.keys.map((k,i)=>({key:k,label:METRICS[k].label,direction:METRICS[k].dir,mean:w.model.st.mu[i],sd:w.model.st.sig[i],coef:w.model.w[i+1]})),intercept:w.model.w[0],ridgeLambda:analysis.cfg.lambda,cv:w.metrics,loroCV:w.loro.metrics,notes:'Input feature is direction*(A-B); positive means A is better. Train set uses mirror augmentation. Prefix models exclude matches already finished by the horizon.'};
+  download(`tetris_strength_model_${safeName(w.def.id)}_${stamp()}.json`,JSON.stringify(payload),'application/json');$('exportStatus').textContent='選択モデルJSONを出力しました。';
+});
+$('exportJson').addEventListener('click',()=>{
+  if(!analysis)return;
+  const payload={schema:2,kind:'tetris-content-evaluator-analysis',appVersion:APP_VERSION,createdAt:analysis.createdAt,config:analysis.cfg,features:analysis.keys,
+    runs:runs.map(r=>({id:r.id,label:r.label,fileName:r.fileName,include:r.include,levelA:r.levelA,levelB:r.levelB,metaOrigin:r.metaOrigin,matches:r.matchList.length,rows:r.rows,warnings:r.warnings||[]})),
+    horizons:horizonRows(),drawScores:Object.fromEntries(windowResultList().filter(w=>!w.error).map(w=>[w.def.id,w.draws.map(d=>({run:d.run,matchIndex:d.matchIndex,seed:d.seed,rounds:d.rounds,pA:d.p}))])),
+    oof:Object.fromEntries(windowResultList().filter(w=>!w.error).map(w=>[w.def.id,w.cv.oof.map(x=>({run:x.run,matchIndex:x.matchIndex,seed:x.seed,winner:x.winner,rounds:x.rounds,fold:x.fold,pA:x.p}))]))
+  };
+  download(`tetris_early_strength_analysis_${stamp()}.json`,JSON.stringify(payload),'application/json');$('exportStatus').textContent='解析JSONを出力しました。';
+});
+})();
+</script>
+</main>
+</body>
+</html>
